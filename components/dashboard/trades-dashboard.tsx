@@ -327,7 +327,7 @@ export function TradesDashboard() {
           </p>
         </div>
         <p className="text-[11px] text-zinc-600">
-          Updated {formatUpdateTime(snapshot.updatedAt)}
+          {loading ? 'Updating account data…' : `Updated ${formatUpdateTime(snapshot.updatedAt)}`}
         </p>
       </section>
 

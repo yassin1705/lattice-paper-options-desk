@@ -126,6 +126,7 @@ export const mockSnapshot: DashboardSnapshot = {
       report: 'Time-based exit completed with a small gain.',
     },
   ],
-  updatedAt: new Date().toISOString(),
+  // Stable across server and browser renders; the API replaces it after hydration.
+  updatedAt: '2026-08-29T00:00:00.000Z',
   isMock: true,
 };
