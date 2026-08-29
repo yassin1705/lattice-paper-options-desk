@@ -1,3 +1,4 @@
+import { createAlpacaReadGatewayFromEnvironment } from '@/lib/alpaca/factory';
 import { AlpacaDashboardProvider } from '@/lib/dashboard/alpaca-provider';
 import { mockAssets, mockSnapshot } from '@/lib/dashboard/mock-data';
 import type { DashboardDataProvider, DashboardSnapshot, TradableAsset } from '@/lib/dashboard/types';
@@ -20,12 +21,9 @@ class MockDashboardProvider implements DashboardDataProvider {
 }
 
 export function getDashboardProvider(): DashboardDataProvider {
-  const apiKey = process.env.ALPACA_API_KEY;
-  const secretKey = process.env.ALPACA_SECRET_KEY;
-  const baseUrl = process.env.ALPACA_API_BASE_URL ?? 'https://paper-api.alpaca.markets';
-
-  if (!apiKey || !secretKey) return new MockDashboardProvider();
-  return new AlpacaDashboardProvider(apiKey, secretKey, baseUrl);
+  const alpaca = createAlpacaReadGatewayFromEnvironment();
+  if (!alpaca) return new MockDashboardProvider();
+  return AlpacaDashboardProvider.fromGateway(alpaca);
 }
 
 export function snapshotWithConnectionError(message: string): DashboardSnapshot {
