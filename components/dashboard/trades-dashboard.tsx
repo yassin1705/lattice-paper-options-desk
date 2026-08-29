@@ -58,6 +58,23 @@ const shortDate = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 });
 
+const updateTime = new Intl.DateTimeFormat('en-US', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true,
+  timeZone: 'UTC',
+});
+
+function formatTradeDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value || 'Unavailable' : shortDate.format(date);
+}
+
+function formatUpdateTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unavailable' : `${updateTime.format(date)} UTC`;
+}
+
 function PositionCard({ position }: { position: OpenOptionPosition }) {
   const positive = position.unrealizedProfitLoss >= 0;
   const DirectionIcon = positive ? ArrowUpRight : ArrowDownRight;
@@ -151,7 +168,7 @@ function ReportDrawer({ trade }: { trade: CompletedOptionTrade }) {
             <PositionMetric label="Underlying" value={trade.underlying} />
             <PositionMetric label="Status" value={trade.status} />
             <PositionMetric label="Quantity" value={String(trade.quantity)} />
-            <PositionMetric label="Closed" value={shortDate.format(new Date(trade.closedAt))} />
+            <PositionMetric label="Closed" value={formatTradeDate(trade.closedAt)} />
             <PositionMetric
               label="Entry price"
               value={trade.entryPrice === null ? 'Unavailable' : money.format(trade.entryPrice)}
@@ -213,7 +230,7 @@ function CompletedTradesTable({ trades }: { trades: CompletedOptionTrade[] }) {
             return (
               <TableRow key={trade.id} className="border-white/6 hover:bg-white/[0.025]">
                 <TableCell className="whitespace-nowrap text-xs text-zinc-500">
-                  {shortDate.format(new Date(trade.closedAt))}
+                  {formatTradeDate(trade.closedAt)}
                 </TableCell>
                 <TableCell>
                   <p className="font-medium text-zinc-200">{trade.underlying}</p>
@@ -310,7 +327,7 @@ export function TradesDashboard() {
           </p>
         </div>
         <p className="text-[11px] text-zinc-600">
-          Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          Updated {formatUpdateTime(snapshot.updatedAt)}
         </p>
       </section>
 

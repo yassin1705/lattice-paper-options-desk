@@ -88,7 +88,7 @@ export const mockSnapshot: DashboardSnapshot = {
   completedTrades: [
     {
       id: 'mock-trade-1',
-      closedAt: 'Aug 28 · 14:42',
+      closedAt: '2026-08-28T14:42:00-04:00',
       underlying: 'SPY',
       contract: 'Call · $770 · Sep 04',
       quantity: 1,
@@ -101,7 +101,7 @@ export const mockSnapshot: DashboardSnapshot = {
     },
     {
       id: 'mock-trade-2',
-      closedAt: 'Aug 27 · 15:11',
+      closedAt: '2026-08-27T15:11:00-04:00',
       underlying: 'GLD',
       contract: 'Put · $340 · Sep 11',
       quantity: 1,
@@ -114,7 +114,7 @@ export const mockSnapshot: DashboardSnapshot = {
     },
     {
       id: 'mock-trade-3',
-      closedAt: 'Aug 26 · 13:06',
+      closedAt: '2026-08-26T13:06:00-04:00',
       underlying: 'QQQ',
       contract: 'Call · $680 · Sep 04',
       quantity: 1,
