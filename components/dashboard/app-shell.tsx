@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Activity, CircleDollarSign, SlidersHorizontal } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -27,7 +26,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
       <header className="sticky top-0 z-40 border-b border-white/7 bg-[#09110f]/92 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
-            <Link href="/account" className="flex items-center gap-2.5" aria-label="Lattice home">
+            <a href="/account" className="flex items-center gap-2.5" aria-label="Lattice home">
               <span className="grid size-9 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-emerald-300">
                 <CircleDollarSign className="size-5" />
               </span>
@@ -35,13 +34,13 @@ export function AppShell({ active, children, connection }: AppShellProps) {
                 <p className="text-sm font-semibold tracking-[0.18em] text-white">LATTICE</p>
                 <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Paper options desk</p>
               </div>
-            </Link>
+            </a>
 
             <nav className="hidden items-center gap-1 rounded-xl border border-white/7 bg-white/[0.025] p-1 sm:flex">
               {navigation.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <Link
+                  <a
                     key={item.id}
                     href={item.href}
                     className={cn(
@@ -53,7 +52,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
                   >
                     <Icon className="size-3.5" />
                     {item.label}
-                  </Link>
+                  </a>
                 );
               })}
             </nav>
@@ -86,7 +85,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
         {navigation.map((item) => {
           const Icon = item.icon;
           return (
-            <Link
+            <a
               key={item.id}
               href={item.href}
               className={cn(
@@ -96,7 +95,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
             >
               <Icon className="size-4" />
               {item.label}
-            </Link>
+            </a>
           );
         })}
       </nav>
