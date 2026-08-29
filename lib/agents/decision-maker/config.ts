@@ -85,3 +85,23 @@ export const defaultDecisionAgentConfig: DecisionAgentConfig = {
   },
   horizon: '2–5 trading days',
 };
+
+export function decisionAgentConfigForTimeframe(
+  timeframe: DecisionAgentConfig['timeframe'],
+): DecisionAgentConfig {
+  if (timeframe === '1Day') return defaultDecisionAgentConfig;
+  const barsPerTradingDay = timeframe === '1Hour' ? 7 : 26;
+  const maximumBarAgeMinutes = timeframe === '1Hour' ? 180 : 60;
+  return {
+    ...defaultDecisionAgentConfig,
+    version: `${defaultDecisionAgentConfig.version}-${timeframe.toLowerCase()}`,
+    timeframe,
+    annualizationFactor: 252 * barsPerTradingDay,
+    thresholds: {
+      ...defaultDecisionAgentConfig.thresholds,
+      maximumBarAgeMinutes,
+    },
+    horizon:
+      timeframe === '1Hour' ? '3–5 hourly bars' : '3–5 fifteen-minute bars',
+  };
+}

@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "test:decision": "vitest run --config vitest.config.ts lib/agents/decision-maker/tests",
+    "test:agents": "vitest run --config vitest.config.ts lib/agents",
     "decision:backtest": "tsx research/decision-maker/run-period.ts",
     "lint": "oxlint",
     "format": "oxfmt"
