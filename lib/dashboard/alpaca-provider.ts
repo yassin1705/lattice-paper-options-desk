@@ -78,7 +78,7 @@ function optionPosition(position: AlpacaRecord): OpenOptionPosition | null {
 function completedTrade(order: AlpacaRecord): CompletedOptionTrade | null {
   const symbol = String(order.symbol ?? '');
   const contract = parseOptionSymbol(symbol);
-  if (!contract || !order.filled_at) return null;
+  if (!contract || order.status !== 'filled' || !order.filled_at) return null;
 
   const optionLabel = contract.optionType === 'call' ? 'Call' : 'Put';
   const expirationLabel = new Intl.DateTimeFormat('en-US', {
@@ -89,13 +89,7 @@ function completedTrade(order: AlpacaRecord): CompletedOptionTrade | null {
 
   return {
     id: String(order.id ?? `${symbol}-${order.filled_at}`),
-    closedAt: new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'America/New_York',
-    }).format(new Date(String(order.filled_at))),
+    closedAt: new Date(String(order.filled_at)).toISOString(),
     underlying: contract.underlying,
     contract: `${optionLabel} · $${contract.strike.toLocaleString()} · ${expirationLabel}`,
     quantity: numberValue(order.filled_qty),
@@ -103,7 +97,7 @@ function completedTrade(order: AlpacaRecord): CompletedOptionTrade | null {
     exitPrice: numberValue(order.filled_avg_price) || null,
     profitLoss: null,
     returnPercent: null,
-    status: order.status === 'canceled' ? 'cancelled' : 'closed',
+    status: 'closed',
     report: 'Imported from Alpaca order history. P&L pairing will be added with the execution ledger.',
   };
 }
