@@ -1,0 +1,4 @@
+jupyterlab>=4.2,<5
+nbconvert>=7.16,<8
+matplotlib>=3.9,<4
+pandas>=2.2,<3

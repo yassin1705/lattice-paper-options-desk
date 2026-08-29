@@ -14,14 +14,18 @@ export function standardDeviation(values: number[]): number | null {
   return Math.sqrt(variance);
 }
 
-export function realizedVolatility(values: number[], period: number): number | null {
+export function realizedVolatility(
+  values: number[],
+  period: number,
+  annualizationFactor = 252,
+): number | null {
   if (period <= 1 || values.length <= period) return null;
   const returns = values.slice(1).map((value, index) => {
     const previous = values[index];
     return previous > 0 ? Math.log(value / previous) : 0;
   });
   const deviation = standardDeviation(returns.slice(-period));
-  return deviation === null ? null : deviation * Math.sqrt(252);
+  return deviation === null ? null : deviation * Math.sqrt(annualizationFactor);
 }
 
 export function zScore(values: number[], period: number): number | null {

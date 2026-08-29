@@ -10,6 +10,18 @@ import {
 } from '@/lib/agents/decision-maker/tests/fixtures';
 
 describe('DecisionMakerAgent', () => {
+  it('evaluates a directional signal without requiring an option chain', () => {
+    const context = decisionContext();
+    const result = new DecisionMakerAgent().evaluateSignal({
+      ...context,
+      optionChain: [],
+    });
+
+    expect(result.kind).toBe('signal_evaluation');
+    expect(result.eligible).toBe(true);
+    expect(result.direction).toBe('bullish');
+  });
+
   it('produces an explainable bullish call intent for a strong rising fixture', () => {
     const result = new DecisionMakerAgent().evaluate(decisionContext());
     expect(result.kind).toBe('trade_intent');

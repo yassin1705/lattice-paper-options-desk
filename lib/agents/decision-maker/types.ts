@@ -107,3 +107,13 @@ export type NoTradeIntent = DecisionAnalysis & {
 };
 
 export type DecisionResult = TradeIntent | NoTradeIntent;
+
+export type SignalBlockingReason = Exclude<NoTradeReason, 'no_liquid_contract'>;
+
+export type SignalEvaluation = DecisionAnalysis & {
+  kind: 'signal_evaluation';
+  eligible: boolean;
+  direction: SignalDirection;
+  blockingReason: SignalBlockingReason | null;
+  explanation: string[];
+};

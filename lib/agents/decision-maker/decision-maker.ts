@@ -18,6 +18,7 @@ import type {
   NoTradeIntent,
   NoTradeReason,
   SentimentSignal,
+  SignalEvaluation,
 } from '@/lib/agents/decision-maker/types';
 
 function stableHash(value: string): string {
@@ -46,10 +47,10 @@ function noTrade(
 export class DecisionMakerAgent {
   constructor(private readonly config: DecisionAgentConfig = defaultDecisionAgentConfig) {}
 
-  evaluate(
+  evaluateSignal(
     context: DecisionContext,
     sentiment: SentimentSignal = unavailableSentiment,
-  ): DecisionResult {
+  ): SignalEvaluation {
     const { features, dataQuality } = computeFeatures(context, this.config);
     const regime = classifyMarketRegime(features, this.config);
     const technicalContributions = [
@@ -71,29 +72,63 @@ export class DecisionMakerAgent {
       sentiment,
     };
 
-    if (!dataQuality.sufficient) {
-      return noTrade(analysis, 'insufficient_data', dataQuality.warnings);
-    }
-    if (dataQuality.stale) {
-      return noTrade(analysis, 'stale_data', dataQuality.warnings);
-    }
-    if (score.conflicting) {
-      return noTrade(analysis, 'conflicting_signals', [
-        'Bullish and bearish strategy contributions are too close to distinguish.',
-      ]);
-    }
-    if (Math.abs(score.finalScore) < this.config.thresholds.tradeScore) {
-      return noTrade(analysis, 'weak_signal', [
-        `Absolute signal score ${Math.abs(score.finalScore).toFixed(3)} is below the ${this.config.thresholds.tradeScore.toFixed(3)} threshold.`,
-      ]);
+    const blockingReason = !dataQuality.sufficient
+      ? 'insufficient_data'
+      : dataQuality.stale
+        ? 'stale_data'
+        : score.conflicting
+          ? 'conflicting_signals'
+          : Math.abs(score.finalScore) < this.config.thresholds.tradeScore
+            ? 'weak_signal'
+            : null;
+    const explanation =
+      blockingReason === 'insufficient_data' || blockingReason === 'stale_data'
+        ? dataQuality.warnings
+        : blockingReason === 'conflicting_signals'
+          ? ['Bullish and bearish strategy contributions are too close to distinguish.']
+          : blockingReason === 'weak_signal'
+            ? [
+                `Absolute signal score ${Math.abs(score.finalScore).toFixed(3)} is below the ${this.config.thresholds.tradeScore.toFixed(3)} threshold.`,
+              ]
+            : [];
+
+    return {
+      ...analysis,
+      kind: 'signal_evaluation',
+      eligible: blockingReason === null,
+      direction:
+        score.finalScore > 0.05 ? 'bullish' : score.finalScore < -0.05 ? 'bearish' : 'neutral',
+      blockingReason,
+      explanation,
+    };
+  }
+
+  evaluate(
+    context: DecisionContext,
+    sentiment: SentimentSignal = unavailableSentiment,
+  ): DecisionResult {
+    const signal = this.evaluateSignal(context, sentiment);
+    const {
+      kind: _kind,
+      eligible,
+      direction,
+      blockingReason,
+      explanation: signalExplanation,
+      ...analysis
+    } = signal;
+    if (!eligible || direction === 'neutral') {
+      return noTrade(
+        analysis,
+        blockingReason ?? 'weak_signal',
+        signalExplanation.length ? signalExplanation : ['The combined signal is neutral.'],
+      );
     }
 
-    const direction = score.finalScore > 0 ? 'bullish' : 'bearish';
     const selectedContract = selectContract(
       context,
       direction,
       this.config,
-      features.latestPrice,
+      analysis.features.latestPrice,
     );
     if (!selectedContract) {
       return noTrade(analysis, 'no_liquid_contract', [
@@ -103,8 +138,8 @@ export class DecisionMakerAgent {
 
     const explanation = buildTradeExplanation(
       direction,
-      regime,
-      score.contributions,
+      analysis.regime,
+      analysis.contributions,
       selectedContract,
     );
     return {
@@ -113,9 +148,9 @@ export class DecisionMakerAgent {
       id: `decision:${stableHash(`${context.contextId}:${this.config.version}:${selectedContract.contract.symbol}`)}`,
       action: direction === 'bullish' ? 'buy_call' : 'buy_put',
       contractSymbol: selectedContract.contract.symbol,
-      thesisType: dominantThesis(score.contributions),
+      thesisType: dominantThesis(analysis.contributions),
       horizon: this.config.horizon,
-      signalStrength: Math.abs(score.finalScore),
+      signalStrength: Math.abs(analysis.finalScore),
       thesis: explanation.thesis,
       invalidationConditions: explanation.invalidationConditions,
       selectedContract,

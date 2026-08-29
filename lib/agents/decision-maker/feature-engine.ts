@@ -90,7 +90,11 @@ export function computeFeatures(
     return1: percentReturn(closes, 1),
     return5: percentReturn(closes, 5),
     momentum: percentReturn(closes, config.periods.momentum),
-    realizedVolatility: realizedVolatility(closes, config.periods.volatility),
+    realizedVolatility: realizedVolatility(
+      closes,
+      config.periods.volatility,
+      config.annualizationFactor,
+    ),
     priceToSmaLongPercent:
       smaLong !== null && smaLong > 0 ? ((latestPrice - smaLong) / smaLong) * 100 : null,
     returnZScore: zScore(returns, config.periods.volatility),

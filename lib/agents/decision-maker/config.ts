@@ -1,5 +1,7 @@
 export type DecisionAgentConfig = {
   version: string;
+  timeframe: '1Day' | '1Hour' | '15Min';
+  annualizationFactor: number;
   periods: {
     smaShort: number;
     smaLong: number;
@@ -42,6 +44,8 @@ export type DecisionAgentConfig = {
 
 export const defaultDecisionAgentConfig: DecisionAgentConfig = {
   version: 'decision-v1',
+  timeframe: '1Day',
+  annualizationFactor: 252,
   periods: {
     smaShort: 10,
     smaLong: 30,
