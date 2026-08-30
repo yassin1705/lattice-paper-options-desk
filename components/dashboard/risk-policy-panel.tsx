@@ -4,69 +4,102 @@ import { useEffect, useState } from 'react';
 import { Check, Clock3, Plus, Search, Settings2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
+import {
+  defaultRiskPolicy,
+  type HoldingHorizon,
+  type RiskPolicy,
+  type RiskPolicySnapshot,
+  type RiskProfile,
+} from '@/lib/agents/risk-manager/policy';
 import type { TradableAsset } from '@/lib/dashboard/types';
 
-type PolicyDraft = {
-  profile: string;
-  maxTradeLoss: string;
-  dailyLossLimit: string;
-  horizon: string;
-  requireConfirmation: boolean;
-  watchlist: string[];
-};
-
-const defaultPolicy: PolicyDraft = {
-  profile: 'conservative',
-  maxTradeLoss: '0.25',
-  dailyLossLimit: '0.75',
-  horizon: '2-5',
-  requireConfirmation: true,
-  watchlist: ['SPY', 'QQQ', 'GLD'],
-};
-
 export function RiskPolicyPanel() {
-  const [policy, setPolicy] = useState(defaultPolicy);
+  const [policy, setPolicy] = useState<RiskPolicy>(() =>
+    structuredClone(defaultRiskPolicy),
+  );
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TradableAsset[]>([]);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState<number | null>(null);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('lattice-policy-draft');
-    if (stored) {
+    async function loadPolicy() {
       try {
-        setPolicy({ ...defaultPolicy, ...(JSON.parse(stored) as Partial<PolicyDraft>) });
+        const response = await fetch('/api/risk-policy', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Could not load the risk policy.');
+        const snapshot = (await response.json()) as RiskPolicySnapshot;
+        setPolicy(snapshot.policy);
+        setRevision(snapshot.revision);
       } catch {
-        window.localStorage.removeItem('lattice-policy-draft');
+        setError(
+          'Using safe defaults because the risk-policy service is unavailable.',
+        );
       }
     }
+    void loadPolicy();
   }, []);
 
   async function searchAssets() {
     const response = await fetch(`/api/assets?q=${encodeURIComponent(query)}`);
     const payload = (await response.json()) as { assets: TradableAsset[] };
-    setResults(payload.assets.filter((asset) => !policy.watchlist.includes(asset.symbol)));
+    setResults(
+      payload.assets.filter(
+        (asset) => !policy.approvedUnderlyings.includes(asset.symbol),
+      ),
+    );
   }
 
   function addAsset(symbol: string) {
-    setPolicy((current) => ({ ...current, watchlist: [...current.watchlist, symbol] }));
+    setPolicy((current) => ({
+      ...current,
+      approvedUnderlyings: [...current.approvedUnderlyings, symbol],
+    }));
     setResults((current) => current.filter((asset) => asset.symbol !== symbol));
   }
 
   function removeAsset(symbol: string) {
     setPolicy((current) => ({
       ...current,
-      watchlist: current.watchlist.filter((item) => item !== symbol),
+      approvedUnderlyings: current.approvedUnderlyings.filter(
+        (item) => item !== symbol,
+      ),
     }));
   }
 
-  function savePolicy() {
-    window.localStorage.setItem('lattice-policy-draft', JSON.stringify(policy));
+  async function savePolicy() {
+    setError(null);
+    const response = await fetch('/api/risk-policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(policy),
+    });
+    const payload = (await response.json()) as
+      | RiskPolicySnapshot
+      | { error: string };
+    if (!response.ok || !('policy' in payload)) {
+      setError(
+        'error' in payload ? payload.error : 'Could not save the risk policy.',
+      );
+      return;
+    }
+    setPolicy(payload.policy);
+    setRevision(payload.revision);
     setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    window.setTimeout(() => setSaved(false), 1_800);
   }
 
   return (
@@ -74,66 +107,289 @@ export function RiskPolicyPanel() {
       <CardHeader className="border-b border-white/7 pb-4">
         <CardTitle className="flex items-center gap-2 text-white">
           <Settings2 className="size-4 text-emerald-300" />
-          Risk policy draft
+          Active risk policy
         </CardTitle>
-        <CardDescription className="mt-1">Saved locally for this device</CardDescription>
+        <CardDescription className="mt-1">
+          {revision ? `In-memory revision ${revision}` : 'Loading policy'} ·
+          resets on server restart
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
-        <label className="block space-y-2">
-          <span className="text-xs font-medium text-zinc-300">Risk profile</span>
+        <label htmlFor="risk-profile" className="block space-y-2">
+          <span className="text-xs font-medium text-zinc-300">
+            Risk profile
+          </span>
           <NativeSelect
+            id="risk-profile"
             className="w-full"
             value={policy.profile}
-            onChange={(event) => setPolicy({ ...policy, profile: event.target.value })}
+            onChange={(event) =>
+              setPolicy({
+                ...policy,
+                profile: event.target.value as RiskProfile,
+              })
+            }
           >
-            <NativeSelectOption value="conservative">Conservative</NativeSelectOption>
+            <NativeSelectOption value="conservative">
+              Conservative
+            </NativeSelectOption>
             <NativeSelectOption value="moderate">Moderate</NativeSelectOption>
-            <NativeSelectOption value="experimental">Experimental</NativeSelectOption>
+            <NativeSelectOption value="experimental">
+              Experimental
+            </NativeSelectOption>
           </NativeSelect>
         </label>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-2">
-            <span className="text-xs font-medium text-zinc-300">Max trade loss</span>
+          <label htmlFor="maximum-trade-risk" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Max trade loss
+            </span>
             <div className="relative">
               <Input
-                value={policy.maxTradeLoss}
-                onChange={(event) => setPolicy({ ...policy, maxTradeLoss: event.target.value })}
+                id="maximum-trade-risk"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={policy.sizing.maximumRiskPerTradePercent}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    sizing: {
+                      ...policy.sizing,
+                      maximumRiskPerTradePercent: Number(event.target.value),
+                    },
+                  })
+                }
                 className="pr-7 font-mono"
               />
-              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">%</span>
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">
+                %
+              </span>
             </div>
           </label>
-          <label className="space-y-2">
-            <span className="text-xs font-medium text-zinc-300">Daily loss limit</span>
+          <label htmlFor="daily-loss-limit" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Daily loss limit
+            </span>
             <div className="relative">
               <Input
-                value={policy.dailyLossLimit}
-                onChange={(event) => setPolicy({ ...policy, dailyLossLimit: event.target.value })}
+                id="daily-loss-limit"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={policy.dailyLossLimitPercent}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    dailyLossLimitPercent: Number(event.target.value),
+                  })
+                }
                 className="pr-7 font-mono"
               />
-              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">%</span>
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">
+                %
+              </span>
             </div>
           </label>
         </div>
 
-        <label className="block space-y-2">
-          <span className="text-xs font-medium text-zinc-300">Holding horizon</span>
+        <label htmlFor="holding-horizon" className="block space-y-2">
+          <span className="text-xs font-medium text-zinc-300">
+            Holding horizon
+          </span>
           <NativeSelect
+            id="holding-horizon"
             className="w-full"
-            value={policy.horizon}
-            onChange={(event) => setPolicy({ ...policy, horizon: event.target.value })}
+            value={policy.holdingHorizon}
+            onChange={(event) =>
+              setPolicy({
+                ...policy,
+                holdingHorizon: event.target.value as HoldingHorizon,
+              })
+            }
           >
             <NativeSelectOption value="intraday">Intraday</NativeSelectOption>
-            <NativeSelectOption value="2-5">2–5 trading days</NativeSelectOption>
-            <NativeSelectOption value="1-4w">1–4 weeks</NativeSelectOption>
+            <NativeSelectOption value="swing">
+              2–5 trading days
+            </NativeSelectOption>
+            <NativeSelectOption value="position">1–4 weeks</NativeSelectOption>
           </NativeSelect>
         </label>
 
+        <div className="grid grid-cols-2 gap-3">
+          <label htmlFor="minimum-signal-strength" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Minimum signal
+            </span>
+            <Input
+              id="minimum-signal-strength"
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={policy.entry.minimumSignalStrength}
+              onChange={(event) =>
+                setPolicy({
+                  ...policy,
+                  entry: {
+                    ...policy.entry,
+                    minimumSignalStrength: Number(event.target.value),
+                  },
+                })
+              }
+              className="font-mono"
+            />
+          </label>
+          <label htmlFor="maximum-open-positions" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Max open positions
+            </span>
+            <Input
+              id="maximum-open-positions"
+              type="number"
+              min="1"
+              step="1"
+              value={policy.entry.maximumOpenPositions}
+              onChange={(event) =>
+                setPolicy({
+                  ...policy,
+                  entry: {
+                    ...policy.entry,
+                    maximumOpenPositions: Number(event.target.value),
+                  },
+                })
+              }
+              className="font-mono"
+            />
+          </label>
+          <label htmlFor="position-stop-loss" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">Stop loss</span>
+            <div className="relative">
+              <Input
+                id="position-stop-loss"
+                type="number"
+                min="0.01"
+                step="1"
+                value={policy.exit.stopLossPercent}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    exit: {
+                      ...policy.exit,
+                      stopLossPercent: Number(event.target.value),
+                    },
+                  })
+                }
+                className="pr-7 font-mono"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">
+                %
+              </span>
+            </div>
+          </label>
+          <label htmlFor="position-take-profit" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Take profit
+            </span>
+            <div className="relative">
+              <Input
+                id="position-take-profit"
+                type="number"
+                min="0.01"
+                step="1"
+                value={policy.exit.takeProfitPercent}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    exit: {
+                      ...policy.exit,
+                      takeProfitPercent: Number(event.target.value),
+                    },
+                  })
+                }
+                className="pr-7 font-mono"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">
+                %
+              </span>
+            </div>
+          </label>
+          <label htmlFor="maximum-contract-spread" className="space-y-2">
+            <span className="text-xs font-medium text-zinc-300">
+              Maximum spread
+            </span>
+            <div className="relative">
+              <Input
+                id="maximum-contract-spread"
+                type="number"
+                min="0.01"
+                step="0.5"
+                value={policy.contract.maximumSpreadPercent}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    contract: {
+                      ...policy.contract,
+                      maximumSpreadPercent: Number(event.target.value),
+                    },
+                  })
+                }
+                className="pr-7 font-mono"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600">
+                %
+              </span>
+            </div>
+          </label>
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium text-zinc-300">
+              Expiration range
+            </legend>
+            <div className="flex items-center gap-2">
+              <Input
+                aria-label="Minimum days to expiration"
+                type="number"
+                min="1"
+                value={policy.contract.minimumDaysToExpiration}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    contract: {
+                      ...policy.contract,
+                      minimumDaysToExpiration: Number(event.target.value),
+                    },
+                  })
+                }
+                className="font-mono"
+              />
+              <span className="text-xs text-zinc-600">to</span>
+              <Input
+                aria-label="Maximum days to expiration"
+                type="number"
+                min="1"
+                value={policy.contract.maximumDaysToExpiration}
+                onChange={(event) =>
+                  setPolicy({
+                    ...policy,
+                    contract: {
+                      ...policy.contract,
+                      maximumDaysToExpiration: Number(event.target.value),
+                    },
+                  })
+                }
+                className="font-mono"
+              />
+            </div>
+          </fieldset>
+        </div>
+
         <div className="space-y-2">
-          <span className="text-xs font-medium text-zinc-300">Approved underlyings</span>
+          <span className="text-xs font-medium text-zinc-300">
+            Approved underlyings
+          </span>
           <div className="flex flex-wrap gap-2">
-            {policy.watchlist.map((symbol) => (
+            {policy.approvedUnderlyings.map((symbol) => (
               <button
                 key={symbol}
                 type="button"
@@ -156,7 +412,12 @@ export function RiskPolicyPanel() {
                 className="pl-8"
               />
             </div>
-            <Button type="button" variant="outline" onClick={searchAssets} aria-label="Search assets">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={searchAssets}
+              aria-label="Search assets"
+            >
               <Search className="size-4" />
             </Button>
           </div>
@@ -170,8 +431,12 @@ export function RiskPolicyPanel() {
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-white/5"
                 >
                   <span>
-                    <span className="font-mono text-xs text-zinc-200">{asset.symbol}</span>
-                    <span className="ml-2 text-xs text-zinc-600">{asset.name}</span>
+                    <span className="font-mono text-xs text-zinc-200">
+                      {asset.symbol}
+                    </span>
+                    <span className="ml-2 text-xs text-zinc-600">
+                      {asset.name}
+                    </span>
                   </span>
                   <Plus className="size-3.5 text-emerald-300" />
                 </button>
@@ -182,25 +447,36 @@ export function RiskPolicyPanel() {
 
         <div className="flex items-center justify-between rounded-xl border border-white/7 bg-white/[0.02] p-3.5">
           <div>
-            <p className="text-xs font-medium text-zinc-200">Require confirmation</p>
-            <p className="mt-1 text-[11px] text-zinc-600">Prepared for the execution milestone</p>
+            <p className="text-xs font-medium text-zinc-200">
+              Require confirmation
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Prepared for the execution milestone
+            </p>
           </div>
           <Switch
-            checked={policy.requireConfirmation}
-            onCheckedChange={(checked) => setPolicy({ ...policy, requireConfirmation: checked })}
+            checked={policy.requireManualConfirmation}
+            onCheckedChange={(checked) =>
+              setPolicy({ ...policy, requireManualConfirmation: checked })
+            }
             aria-label="Require confirmation"
           />
         </div>
 
-        <Button onClick={savePolicy} className="w-full bg-emerald-300 text-emerald-950 hover:bg-emerald-200">
+        <Button
+          onClick={savePolicy}
+          className="w-full bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+        >
           <Check className="size-4" />
-          {saved ? 'Policy saved' : 'Save policy draft'}
+          {saved ? 'Policy active' : 'Save active policy'}
         </Button>
 
         <div className="flex items-center gap-2 text-[11px] text-zinc-600">
           <Clock3 className="size-3.5" />
-          Changes will not affect trading in this milestone.
+          The risk manager uses this revision for new reviews; execution remains
+          disabled.
         </div>
+        {error && <p className="text-xs text-red-300">{error}</p>}
       </CardContent>
     </Card>
   );

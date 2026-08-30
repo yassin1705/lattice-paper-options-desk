@@ -2,7 +2,10 @@ import type {
   DecisionAgentMessage,
   OpportunityMessage,
 } from '@/lib/agents/contracts/decision-message';
-import type { RiskDecision } from '@/lib/agents/contracts/risk-decision';
+import type {
+  PositionRiskDecision,
+  RiskDecision,
+} from '@/lib/agents/contracts/risk-decision';
 import {
   defaultScanScheduleConfig,
   type ScanDescriptor,
@@ -45,6 +48,8 @@ export type ScanCoordinatorResult =
       kind: 'completed';
       scan: ScanDescriptor;
       results: ScanSymbolResult[];
+      positionDecisions: PositionRiskDecision[];
+      positionSupervisionError: string | null;
     };
 
 type CoordinatorDependencies = {
@@ -193,7 +198,28 @@ export class AgentScanCoordinator {
     const results = await Promise.all(
       requestedSymbols.map((symbol) => this.scanSymbol(symbol, scan)),
     );
-    return { kind: 'completed', scan, results };
+    try {
+      const positionDecisions =
+        await this.dependencies.riskManager.superviseOpenPositions(scan);
+      return {
+        kind: 'completed',
+        scan,
+        results,
+        positionDecisions,
+        positionSupervisionError: null,
+      };
+    } catch (error) {
+      return {
+        kind: 'completed',
+        scan,
+        results,
+        positionDecisions: [],
+        positionSupervisionError:
+          error instanceof Error
+            ? error.message
+            : 'Position supervision failed.',
+      };
+    }
   }
 
   private async scanSymbol(

@@ -3,7 +3,10 @@ import type {
   DecisionAgentMessage,
   OpportunityMessage,
 } from '@/lib/agents/contracts/decision-message';
-import type { RiskDecision } from '@/lib/agents/contracts/risk-decision';
+import type {
+  PositionRiskDecision,
+  RiskDecision,
+} from '@/lib/agents/contracts/risk-decision';
 import type { ScanDescriptor } from '@/lib/agents/contracts/scan';
 import type { ScanTimeframe } from '@/lib/agents/contracts/scan';
 
@@ -35,4 +38,5 @@ export interface RiskManagerPort {
     signal: OpportunityMessage,
     scan: ScanDescriptor,
   ): Promise<RiskDecision>;
+  superviseOpenPositions(scan: ScanDescriptor): Promise<PositionRiskDecision[]>;
 }

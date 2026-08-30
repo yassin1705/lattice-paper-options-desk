@@ -7,14 +7,7 @@ import type {
   OrderSnapshot,
   PositionSnapshot,
 } from '@/lib/alpaca/types';
-
-export type RiskPolicy = {
-  profile: 'conservative' | 'moderate' | 'experimental';
-  maxTradeLossPercent: number;
-  dailyLossLimitPercent: number;
-  holdingHorizon: 'intraday' | 'swing' | 'position';
-  requireConfirmation: boolean;
-};
+import type { RiskPolicy } from '@/lib/agents/risk-manager/policy';
 
 export type DecisionContext = {
   contextId: string;

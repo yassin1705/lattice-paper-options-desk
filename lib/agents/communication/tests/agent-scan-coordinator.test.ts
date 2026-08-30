@@ -86,8 +86,13 @@ describe('AgentScanCoordinator', () => {
           kind: 'rejected_trade',
           signalId: signal.messageId,
           reviewedAt: '2026-08-29T21:02:31.000Z',
+          policyRevision: 1,
+          rules: [],
           reasons: ['Risk rules are not implemented yet.'],
         };
+      },
+      async superviseOpenPositions() {
+        return [];
       },
     };
     const coordinator = new AgentScanCoordinator(
@@ -140,8 +145,13 @@ describe('AgentScanCoordinator', () => {
               kind: 'rejected_trade',
               signalId: signal.messageId,
               reviewedAt: '2026-08-29T21:10:00.000Z',
+              policyRevision: 1,
+              rules: [],
               reasons: [],
             };
+          },
+          async superviseOpenPositions() {
+            return [];
           },
         },
       },
@@ -175,8 +185,13 @@ describe('AgentScanCoordinator', () => {
                   kind: 'rejected_trade',
                   signalId: signal.messageId,
                   reviewedAt: '2026-08-29T21:02:00.000Z',
+                  policyRevision: 1,
+                  rules: [],
                   reasons: [],
                 };
+              },
+              async superviseOpenPositions() {
+                return [];
               },
             },
           },
