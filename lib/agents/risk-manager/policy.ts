@@ -7,7 +7,6 @@ export type RiskPolicy = {
   approvedUnderlyings: string[];
   holdingHorizon: HoldingHorizon;
   dailyLossLimitPercent: number;
-  requireManualConfirmation: boolean;
   entry: {
     minimumSignalStrength: number;
     allowedDirections: Array<'bullish' | 'bearish'>;
@@ -55,7 +54,6 @@ export const defaultRiskPolicy: RiskPolicy = {
   approvedUnderlyings: ['SPY', 'QQQ', 'GLD'],
   holdingHorizon: 'swing',
   dailyLossLimitPercent: 0.75,
-  requireManualConfirmation: true,
   entry: {
     minimumSignalStrength: 0.4,
     allowedDirections: ['bullish', 'bearish'],
@@ -196,7 +194,6 @@ export function validateRiskPolicy(value: unknown): RiskPolicy {
       0.01,
       100,
     ),
-    requireManualConfirmation: Boolean(policy.requireManualConfirmation),
     entry: {
       minimumSignalStrength: finiteNumber(
         entry.minimumSignalStrength,

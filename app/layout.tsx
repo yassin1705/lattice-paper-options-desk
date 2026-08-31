@@ -15,16 +15,26 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL ?? 'http://localhost:3000'),
   title: 'Lattice — Paper Options Desk',
-  description: 'An explainable, read-only workspace for Alpaca paper options trading.',
+  description:
+    'An explainable, autonomous workspace for Alpaca paper options trading.',
   openGraph: {
     title: 'Lattice — Paper Options Desk',
-    description: 'An explainable, read-only workspace for Alpaca paper options trading.',
-    images: [{ url: '/og.png', width: 1792, height: 921, alt: 'Lattice paper options desk' }],
+    description:
+      'An explainable, autonomous workspace for Alpaca paper options trading.',
+    images: [
+      {
+        url: '/og.png',
+        width: 1792,
+        height: 921,
+        alt: 'Lattice paper options desk',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Lattice — Paper Options Desk',
-    description: 'An explainable, read-only workspace for Alpaca paper options trading.',
+    description:
+      'An explainable, autonomous workspace for Alpaca paper options trading.',
     images: ['/og.png'],
   },
 };

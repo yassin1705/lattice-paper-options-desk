@@ -37,6 +37,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.tools/
 
 # local decision-maker research artifacts
 /research/decision-maker/cache/*

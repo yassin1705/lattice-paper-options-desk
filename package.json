@@ -11,6 +11,7 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "test:decision": "vitest run --config vitest.config.ts lib/agents/decision-maker/tests",
     "test:agents": "vitest run --config vitest.config.ts lib/agents",
+    "agents:run": "tsx scripts/run-autonomous-agents.ts",
     "decision:backtest": "tsx research/decision-maker/run-period.ts",
     "lint": "oxlint",
     "format": "oxfmt"

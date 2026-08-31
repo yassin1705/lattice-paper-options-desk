@@ -1,5 +1,3 @@
-import 'server-only';
-
 import { AgentDataCoordinator } from '@/lib/agents/agent-data-coordinator';
 import type {
   DecisionContextSource,

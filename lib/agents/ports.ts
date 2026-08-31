@@ -10,6 +10,8 @@ import type {
 import type { ScanDescriptor } from '@/lib/agents/contracts/scan';
 import type { ScanTimeframe } from '@/lib/agents/contracts/scan';
 
+export type { ExecutionManagerPort } from '@/lib/agents/execution/ports';
+
 export type DecisionEvaluationRequest = {
   context: DecisionContext;
   scan: ScanDescriptor;

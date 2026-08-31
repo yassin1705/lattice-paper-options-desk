@@ -16,6 +16,8 @@ import type {
   DecisionContextSource,
   RiskManagerPort,
 } from '@/lib/agents/ports';
+import type { ExecutionProposal } from '@/lib/agents/execution/contracts';
+import type { ExecutionManagerPort } from '@/lib/agents/execution/ports';
 
 export type ScanSymbolResult =
   | {
@@ -28,6 +30,8 @@ export type ScanSymbolResult =
       symbol: string;
       decision: OpportunityMessage;
       riskDecision: RiskDecision;
+      executionProposal: ExecutionProposal | null;
+      executionError: string | null;
     }
   | {
       kind: 'failed';
@@ -49,13 +53,21 @@ export type ScanCoordinatorResult =
       scan: ScanDescriptor;
       results: ScanSymbolResult[];
       positionDecisions: PositionRiskDecision[];
+      positionExecutionProposals: ExecutionProposal[];
       positionSupervisionError: string | null;
+      positionExecutionError: string | null;
     };
+
+export type CompletedScanCoordinatorResult = Extract<
+  ScanCoordinatorResult,
+  { kind: 'completed' }
+>;
 
 type CoordinatorDependencies = {
   contextSource: DecisionContextSource;
   decisionAgent: DecisionAgentPort;
   riskManager: RiskManagerPort;
+  executionManager?: ExecutionManagerPort;
   clock?: () => Date;
 };
 
@@ -194,19 +206,59 @@ export class AgentScanCoordinator {
       return { kind: 'already_scanned', scan };
     this.lastStartedScanId = currentScanId;
 
-    const requestedSymbols = normalizedSymbols(symbols);
+    return this.executeScan(normalizedSymbols(symbols), scan);
+  }
+
+  async runTestScan(
+    symbols: string[],
+    startedAt: Date = this.clock(),
+  ): Promise<CompletedScanCoordinatorResult> {
+    const scan: ScanDescriptor = {
+      scanId: `test:${this.config.timeframe}:${startedAt.toISOString()}`,
+      scheduledAt: startedAt.toISOString(),
+      startedAt: startedAt.toISOString(),
+      validUntil: new Date(
+        startedAt.getTime() + this.config.signalTtlMinutes * 60_000,
+      ).toISOString(),
+      timeframe: this.config.timeframe,
+      lookbackBars: this.config.lookbackBars,
+    };
+    return this.executeScan(normalizedSymbols(symbols), scan);
+  }
+
+  private async executeScan(
+    requestedSymbols: string[],
+    scan: ScanDescriptor,
+  ): Promise<CompletedScanCoordinatorResult> {
     const results = await Promise.all(
       requestedSymbols.map((symbol) => this.scanSymbol(symbol, scan)),
     );
     try {
       const positionDecisions =
         await this.dependencies.riskManager.superviseOpenPositions(scan);
+      let positionExecutionProposals: ExecutionProposal[] = [];
+      let positionExecutionError: string | null = null;
+      if (this.dependencies.executionManager) {
+        try {
+          positionExecutionProposals =
+            await this.dependencies.executionManager.processPositionDecisions(
+              positionDecisions,
+            );
+        } catch (error) {
+          positionExecutionError =
+            error instanceof Error
+              ? error.message
+              : 'Position execution handoff failed.';
+        }
+      }
       return {
         kind: 'completed',
         scan,
         results,
         positionDecisions,
+        positionExecutionProposals,
         positionSupervisionError: null,
+        positionExecutionError,
       };
     } catch (error) {
       return {
@@ -214,10 +266,12 @@ export class AgentScanCoordinator {
         scan,
         results,
         positionDecisions: [],
+        positionExecutionProposals: [],
         positionSupervisionError:
           error instanceof Error
             ? error.message
             : 'Position supervision failed.',
+        positionExecutionError: null,
       };
     }
   }
@@ -242,7 +296,27 @@ export class AgentScanCoordinator {
         decision,
         scan,
       );
-      return { kind: 'risk_reviewed', symbol, decision, riskDecision };
+      let executionProposal: ExecutionProposal | null = null;
+      let executionError: string | null = null;
+      if (this.dependencies.executionManager) {
+        try {
+          executionProposal =
+            await this.dependencies.executionManager.processEntry(riskDecision);
+        } catch (error) {
+          executionError =
+            error instanceof Error
+              ? error.message
+              : 'Entry execution handoff failed.';
+        }
+      }
+      return {
+        kind: 'risk_reviewed',
+        symbol,
+        decision,
+        riskDecision,
+        executionProposal,
+        executionError,
+      };
     } catch (error) {
       return {
         kind: 'failed',

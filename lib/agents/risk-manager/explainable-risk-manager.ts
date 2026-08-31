@@ -71,6 +71,24 @@ export class ExplainableRiskManager implements RiskManagerPort {
     if (failedRules(rules).length > 0)
       return this.rejection(signal, snapshot, rules, now);
 
+    const equity = snapshot.account.equity;
+    const tradeBudget =
+      equity * (policy.sizing.maximumRiskPerTradePercent / 100);
+    const premiumBudget =
+      equity * (policy.sizing.maximumOptionPremiumPercent / 100);
+    const portfolioLimit =
+      equity * (policy.sizing.maximumPortfolioRiskPercent / 100);
+    const portfolioRemaining = Math.max(
+      0,
+      portfolioLimit - features.portfolioPremiumAtRisk,
+    );
+    const availableBudget = Math.min(
+      tradeBudget,
+      premiumBudget,
+      portfolioRemaining,
+      snapshot.account.optionsBuyingPower,
+    );
+
     const type = signal.direction === 'bullish' ? 'call' : 'put';
     const expirationDateGte = dateOffset(
       now,
@@ -101,6 +119,7 @@ export class ExplainableRiskManager implements RiskManagerPort {
       buildOptionCandidates(contracts, markets, now),
       signal,
       policy,
+      availableBudget,
     );
     rules.push(...selection.rules);
     if (!selection.candidate)
@@ -110,23 +129,6 @@ export class ExplainableRiskManager implements RiskManagerPort {
     const entryPrice = candidate.market.askPrice ?? candidate.midpoint;
     const multiplier = candidate.contract.multiplier || 100;
     const lossPerContract = entryPrice * multiplier;
-    const equity = snapshot.account.equity;
-    const tradeBudget =
-      equity * (policy.sizing.maximumRiskPerTradePercent / 100);
-    const premiumBudget =
-      equity * (policy.sizing.maximumOptionPremiumPercent / 100);
-    const portfolioLimit =
-      equity * (policy.sizing.maximumPortfolioRiskPercent / 100);
-    const portfolioRemaining = Math.max(
-      0,
-      portfolioLimit - features.portfolioPremiumAtRisk,
-    );
-    const availableBudget = Math.min(
-      tradeBudget,
-      premiumBudget,
-      portfolioRemaining,
-      snapshot.account.optionsBuyingPower,
-    );
     const quantity = Math.min(
       policy.sizing.maximumContractsPerTrade,
       Math.floor(availableBudget / lossPerContract),
@@ -164,9 +166,7 @@ export class ExplainableRiskManager implements RiskManagerPort {
       rules,
       explanation: [
         `Approved ${quantity} contract${quantity === 1 ? '' : 's'} within the full-premium loss budget.`,
-        policy.requireManualConfirmation
-          ? 'Manual confirmation is required before any future execution step.'
-          : 'The policy does not require manual confirmation.',
+        'The approved plan is ready for autonomous paper execution.',
       ],
     };
   }
@@ -180,6 +180,25 @@ export class ExplainableRiskManager implements RiskManagerPort {
       (position) => position.assetClass === 'us_option',
     );
     if (!positions.length) return [];
+    if (!snapshot.marketClock.isOpen) {
+      return positions.map((position) => ({
+        kind: 'hold_position' as const,
+        contractSymbol: position.symbol,
+        reviewedAt: now.toISOString(),
+        policyRevision: snapshot.policySnapshot.revision,
+        rules: [
+          {
+            ruleId: 'market_open_for_exit',
+            outcome: 'warning' as const,
+            observedValue: false,
+            configuredLimit: true,
+            explanation:
+              'The market is closed, so the position remains under supervision without submitting an exit order.',
+          },
+        ],
+        reasons: ['Exit evaluation will resume when the options market opens.'],
+      }));
+    }
     const contracts = await Promise.all(
       positions.map((position) =>
         this.alpaca.getOptionContract(position.symbol),

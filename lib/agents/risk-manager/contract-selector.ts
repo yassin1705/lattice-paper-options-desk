@@ -66,6 +66,7 @@ export function selectRiskContract(
   candidates: OptionCandidate[],
   signal: OpportunityMessage,
   policy: RiskPolicy,
+  maximumLossPerContract = Infinity,
 ): { candidate: OptionCandidate | null; rules: RiskRuleResult[] } {
   const requiredType = signal.direction === 'bullish' ? 'call' : 'put';
   const eligible = candidates.filter(
@@ -78,7 +79,10 @@ export function selectRiskContract(
       candidate.absoluteDelta <= policy.contract.maximumDelta &&
       candidate.spreadPercent <= policy.contract.maximumSpreadPercent &&
       candidate.volume >= policy.contract.minimumVolume &&
-      candidate.openInterest >= policy.contract.minimumOpenInterest,
+      candidate.openInterest >= policy.contract.minimumOpenInterest &&
+      (candidate.market.askPrice ?? candidate.midpoint) *
+        (candidate.contract.multiplier || 100) <=
+        maximumLossPerContract,
   );
   const selected = [...eligible].sort((left, right) => {
     const leftScore =
@@ -99,7 +103,7 @@ export function selectRiskContract(
           observedValue: eligible.length,
           configuredLimit: 'at least 1',
           explanation:
-            'No option contract passed type, tradability, expiration, delta, spread, volume, and open-interest limits.',
+            'No option contract passed type, tradability, expiration, delta, spread, volume, open-interest, and affordability limits.',
         },
       ],
     };
@@ -143,6 +147,13 @@ export function selectRiskContract(
         selected.openInterest,
         policy.contract.minimumOpenInterest,
         'Open interest meets the configured minimum.',
+      ),
+      passedRule(
+        'contract_affordability',
+        (selected.market.askPrice ?? selected.midpoint) *
+          (selected.contract.multiplier || 100),
+        maximumLossPerContract,
+        'One contract fits the configured trade, premium, portfolio, and buying-power budgets.',
       ),
     ],
   };

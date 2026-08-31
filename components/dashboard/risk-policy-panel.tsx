@@ -16,7 +16,6 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from '@/components/ui/native-select';
-import { Switch } from '@/components/ui/switch';
 import {
   defaultRiskPolicy,
   type HoldingHorizon,
@@ -445,24 +444,6 @@ export function RiskPolicyPanel() {
           )}
         </div>
 
-        <div className="flex items-center justify-between rounded-xl border border-white/7 bg-white/[0.02] p-3.5">
-          <div>
-            <p className="text-xs font-medium text-zinc-200">
-              Require confirmation
-            </p>
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Prepared for the execution milestone
-            </p>
-          </div>
-          <Switch
-            checked={policy.requireManualConfirmation}
-            onCheckedChange={(checked) =>
-              setPolicy({ ...policy, requireManualConfirmation: checked })
-            }
-            aria-label="Require confirmation"
-          />
-        </div>
-
         <Button
           onClick={savePolicy}
           className="w-full bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
@@ -473,8 +454,7 @@ export function RiskPolicyPanel() {
 
         <div className="flex items-center gap-2 text-[11px] text-zinc-600">
           <Clock3 className="size-3.5" />
-          The risk manager uses this revision for new reviews; execution remains
-          disabled.
+          The autonomous pipeline uses this revision on its next scan.
         </div>
         {error && <p className="text-xs text-red-300">{error}</p>}
       </CardContent>
