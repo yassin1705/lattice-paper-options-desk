@@ -226,6 +226,53 @@ describe('ExplainableRiskManager', () => {
     );
   });
 
+  it('rejects a fresh news signal that opposes the technical strategy', async () => {
+    const manager = new ExplainableRiskManager(
+      gateway(),
+      policyProvider(),
+      () => NOW,
+    );
+    const technical = await opportunity();
+    await manager.assess(technical, scan);
+    const news: OpportunityMessage = {
+      ...technical,
+      messageId: 'news:test:SPY',
+      strategy: { id: 'news_llm', frequencyMinutes: 300 },
+      direction: 'bearish',
+      suggestedAction: 'buy_put',
+      thesisType: 'sentiment',
+      analysis: {
+        kind: 'news',
+        symbol: 'SPY',
+        marketObservedAt: NOW.toISOString(),
+        latestPrice: null,
+        signalStrength: 0.9,
+        dataQuality: {
+          sufficient: true,
+          stale: false,
+          observationsReceived: 1,
+          observationsRequired: 1,
+          latestObservationAt: NOW.toISOString(),
+          warnings: [],
+        },
+        relevance: 0.95,
+        impact: 'high',
+        horizon: 'intraday',
+        eventTypes: ['regulation'],
+        sourceIds: ['alpaca'],
+        storyIds: ['story:test'],
+        model: { provider: 'test', name: 'fixture', promptVersion: 'v1' },
+      },
+    };
+    const result = await manager.assess(news, scan);
+
+    expect(result.kind).toBe('rejected_trade');
+    expect(result.strategyId).toBe('news_llm');
+    expect(result.rules).toContainEqual(
+      expect.objectContaining({ ruleId: 'strategy_conflict', outcome: 'fail' }),
+    );
+  });
+
   it('proposes exiting an open option after its stop-loss threshold', async () => {
     const position: PositionSnapshot = {
       observedAt: NOW.toISOString(),

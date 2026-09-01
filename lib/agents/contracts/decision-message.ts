@@ -1,5 +1,4 @@
 import type {
-  DataQuality,
   MarketRegime,
   SentimentSignal,
   SignalBlockingReason,
@@ -11,18 +10,50 @@ import type {
 
 export const decisionMessageSchemaVersion = '1' as const;
 
-export type DecisionMessageAnalysis = {
+export type DecisionDataQuality = {
+  sufficient: boolean;
+  stale: boolean;
+  observationsReceived: number;
+  observationsRequired: number;
+  latestObservationAt: string | null;
+  warnings: string[];
+};
+
+export type DecisionMessageAnalysisBase = {
   symbol: string;
   marketObservedAt: string;
-  latestPrice: number;
+  latestPrice: number | null;
+  signalStrength: number;
+  dataQuality: DecisionDataQuality;
+};
+
+export type TechnicalDecisionMessageAnalysis = DecisionMessageAnalysisBase & {
+  kind: 'technical';
   regime: MarketRegime;
   signedScore: number;
-  signalStrength: number;
   features: TechnicalFeatureSnapshot;
   contributions: SignalContribution[];
-  dataQuality: DataQuality;
   sentiment: SentimentSignal;
 };
+
+export type NewsDecisionMessageAnalysis = DecisionMessageAnalysisBase & {
+  kind: 'news';
+  relevance: number;
+  impact: 'low' | 'medium' | 'high';
+  horizon: 'intraday' | 'one_day' | 'three_days' | 'long_term';
+  eventTypes: string[];
+  sourceIds: string[];
+  storyIds: string[];
+  model: {
+    provider: string;
+    name: string;
+    promptVersion: string;
+  };
+};
+
+export type DecisionMessageAnalysis =
+  | TechnicalDecisionMessageAnalysis
+  | NewsDecisionMessageAnalysis;
 
 type DecisionMessageBase = {
   schemaVersion: typeof decisionMessageSchemaVersion;
@@ -34,6 +65,10 @@ type DecisionMessageBase = {
   agent: {
     name: string;
     version: string;
+  };
+  strategy: {
+    id: 'technical' | 'news_llm';
+    frequencyMinutes: number;
   };
   analysis: DecisionMessageAnalysis;
 };

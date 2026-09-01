@@ -50,7 +50,10 @@ function exitRule(
 
 export class ExplainableRiskManager implements RiskManagerPort {
   private readonly scanSnapshots = new Map<string, Promise<BaseRiskSnapshot>>();
-  private readonly latestSignals = new Map<string, OpportunityMessage>();
+  private readonly latestSignals = new Map<
+    string,
+    Map<OpportunityMessage['strategy']['id'], OpportunityMessage>
+  >();
 
   constructor(
     private readonly alpaca: AlpacaReadGateway,
@@ -62,12 +65,32 @@ export class ExplainableRiskManager implements RiskManagerPort {
     signal: OpportunityMessage,
     scan: ScanDescriptor,
   ): Promise<RiskDecision> {
-    this.latestSignals.set(signal.analysis.symbol, signal);
     const now = this.clock();
+    const signalsForSymbol =
+      this.latestSignals.get(signal.analysis.symbol) ?? new Map();
+    const conflictingSignal = [...signalsForSymbol.values()].find(
+      (candidate) =>
+        candidate.strategy.id !== signal.strategy.id &&
+        new Date(candidate.validUntil).getTime() >= now.getTime() &&
+        candidate.direction !== signal.direction,
+    );
+    signalsForSymbol.set(signal.strategy.id, signal);
+    this.latestSignals.set(signal.analysis.symbol, signalsForSymbol);
     const snapshot = await this.snapshotForScan(scan);
     const policy = snapshot.policySnapshot.policy;
     const features = buildEntryRiskFeatures(signal, snapshot, now);
     const rules = evaluateEntryRules(features, snapshot, policy);
+    rules.unshift({
+      ruleId: 'strategy_conflict',
+      outcome: conflictingSignal ? 'fail' : 'pass',
+      observedValue: conflictingSignal
+        ? `${conflictingSignal.strategy.id}:${conflictingSignal.direction}`
+        : false,
+      configuredLimit: 'no fresh opposing strategy signal',
+      explanation: conflictingSignal
+        ? `The ${conflictingSignal.strategy.id} strategy has a fresh ${conflictingSignal.direction} signal for the same underlying.`
+        : 'No other strategy has a fresh opposing signal for this underlying.',
+    });
     if (failedRules(rules).length > 0)
       return this.rejection(signal, snapshot, rules, now);
 
@@ -148,6 +171,7 @@ export class ExplainableRiskManager implements RiskManagerPort {
     return {
       kind: 'approved_trade_plan',
       signalId: signal.messageId,
+      strategyId: signal.strategy.id,
       reviewedAt: now.toISOString(),
       policyRevision: snapshot.policySnapshot.revision,
       plan: {
@@ -252,7 +276,16 @@ export class ExplainableRiskManager implements RiskManagerPort {
           ? null
           : Math.max(0, (now.getTime() - entryAt) / 60_000);
       const latestSignal = parsed
-        ? this.latestSignals.get(parsed.underlying)
+        ? [...(this.latestSignals.get(parsed.underlying)?.values() ?? [])]
+            .filter(
+              (signal) =>
+                now.getTime() <= new Date(signal.validUntil).getTime(),
+            )
+            .sort(
+              (left, right) =>
+                new Date(right.generatedAt).getTime() -
+                new Date(left.generatedAt).getTime(),
+            )[0]
         : undefined;
       const expectedDirection = parsed?.type === 'call' ? 'bullish' : 'bearish';
       const oppositeSignal =
@@ -404,6 +437,7 @@ export class ExplainableRiskManager implements RiskManagerPort {
     return {
       kind: 'rejected_trade',
       signalId: signal.messageId,
+      strategyId: signal.strategy.id,
       reviewedAt: now.toISOString(),
       policyRevision: snapshot.policySnapshot.revision,
       rules,

@@ -10,6 +10,7 @@ function approvedDecision(): RiskDecision & { kind: 'approved_trade_plan' } {
   return {
     kind: 'approved_trade_plan',
     signalId: 'decision:SPY:2026-08-30T12:00:00.000Z',
+    strategyId: 'technical',
     reviewedAt: '2026-08-30T12:01:00.000Z',
     policyRevision: 4,
     plan: {
@@ -43,6 +44,7 @@ describe('ExecutionManager', () => {
     const proposal = await manager.processEntry({
       kind: 'rejected_trade',
       signalId: 'rejected',
+      strategyId: 'technical',
       reviewedAt: '2026-08-30T12:01:00.000Z',
       policyRevision: 4,
       rules: [],

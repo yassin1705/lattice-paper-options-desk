@@ -20,6 +20,7 @@ export type RiskDecision =
   | {
       kind: 'approved_trade_plan';
       signalId: string;
+      strategyId: 'technical' | 'news_llm';
       reviewedAt: string;
       policyRevision: number;
       plan: ProposedTradePlan;
@@ -29,6 +30,7 @@ export type RiskDecision =
   | {
       kind: 'rejected_trade';
       signalId: string;
+      strategyId: 'technical' | 'news_llm';
       reviewedAt: string;
       policyRevision: number;
       rules: RiskRuleResult[];

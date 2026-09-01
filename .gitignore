@@ -38,6 +38,7 @@ next-env.d.ts
 /outputs/
 /work/
 /.tools/
+*.tsbuildinfo
 
 # local decision-maker research artifacts
 /research/decision-maker/cache/*

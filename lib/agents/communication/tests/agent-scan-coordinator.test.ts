@@ -60,6 +60,8 @@ describe('TechnicalDecisionAgentAdapter', () => {
     expect(message.kind).toBe('opportunity');
     expect(message.schemaVersion).toBe('1');
     expect(message.analysis.symbol).toBe('SPY');
+    expect(message.analysis.kind).toBe('technical');
+    if (message.analysis.kind !== 'technical') return;
     expect(message.analysis.contributions.length).toBeGreaterThanOrEqual(3);
     expect(message).not.toHaveProperty('account');
     expect(message).not.toHaveProperty('balance');
@@ -85,6 +87,7 @@ describe('AgentScanCoordinator', () => {
         return {
           kind: 'rejected_trade',
           signalId: signal.messageId,
+          strategyId: signal.strategy.id,
           reviewedAt: '2026-08-29T21:02:31.000Z',
           policyRevision: 1,
           rules: [],
@@ -144,6 +147,7 @@ describe('AgentScanCoordinator', () => {
             return {
               kind: 'rejected_trade',
               signalId: signal.messageId,
+              strategyId: signal.strategy.id,
               reviewedAt: '2026-08-29T21:10:00.000Z',
               policyRevision: 1,
               rules: [],
@@ -184,6 +188,7 @@ describe('AgentScanCoordinator', () => {
                 return {
                   kind: 'rejected_trade',
                   signalId: signal.messageId,
+                  strategyId: signal.strategy.id,
                   reviewedAt: '2026-08-29T21:02:00.000Z',
                   policyRevision: 1,
                   rules: [],

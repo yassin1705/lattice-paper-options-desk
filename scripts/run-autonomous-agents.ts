@@ -12,6 +12,24 @@ import { decisionAgentConfigForTimeframe } from '@/lib/agents/decision-maker/con
 import { TechnicalDecisionAgentAdapter } from '@/lib/agents/decision-maker/technical-decision-agent-adapter';
 import { ExecutionManager } from '@/lib/agents/execution/execution-manager';
 import { ExplainableRiskManager } from '@/lib/agents/risk-manager/explainable-risk-manager';
+import {
+  defaultNewsStocks,
+  defaultNewsStrategyConfig,
+  type NewsStrategyConfig,
+} from '@/lib/agents/news/config';
+import { NewsAcquisitionService } from '@/lib/agents/news/news-acquisition-service';
+import { NewsDecisionAgent } from '@/lib/agents/news/news-decision-agent';
+import { NewsStrategyCoordinator } from '@/lib/agents/news/news-strategy-coordinator';
+import { OllamaNewsModel } from '@/lib/agents/news/ollama-news-model';
+import {
+  AlpacaNewsSource,
+  AlphaVantageNewsSource,
+  FinnhubNewsSource,
+  GdeltNewsSource,
+  GoogleNewsRssSource,
+  OfficialCompanyNewsSource,
+} from '@/lib/agents/news/sources/http-news-sources';
+import type { NewsSourcePort, NewsStockConfig } from '@/lib/agents/news/types';
 import { HttpRiskPolicyProvider } from '@/lib/agents/risk-manager/http-policy-provider';
 import { AlpacaCliExecutionGateway } from '@/lib/alpaca/alpaca-cli-execution-gateway';
 import { AlpacaHttpReadGateway } from '@/lib/alpaca/alpaca-http-read-gateway';
@@ -24,6 +42,20 @@ function integerEnvironment(name: string, fallback: number): number {
   if (!Number.isInteger(value))
     throw new Error(`${name} must be a whole number.`);
   return value;
+}
+
+function numberEnvironment(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isFinite(value)) throw new Error(`${name} must be a number.`);
+  return value;
+}
+
+function booleanEnvironment(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} must be true or false.`);
 }
 
 function scheduleFromEnvironment(): ScanScheduleConfig {
@@ -61,6 +93,86 @@ function requiredEnvironment(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is missing from .env.local.`);
   return value;
+}
+
+function newsScheduleFromEnvironment(): NewsStrategyConfig {
+  const minimumImpact =
+    process.env.NEWS_MINIMUM_IMPACT ?? defaultNewsStrategyConfig.minimumImpact;
+  if (minimumImpact !== 'medium' && minimumImpact !== 'high') {
+    throw new Error('NEWS_MINIMUM_IMPACT must be medium or high.');
+  }
+  return {
+    frequencyMinutes: integerEnvironment(
+      'NEWS_SCAN_FREQUENCY_MINUTES',
+      defaultNewsStrategyConfig.frequencyMinutes,
+    ),
+    lookbackHours: integerEnvironment(
+      'NEWS_LOOKBACK_HOURS',
+      defaultNewsStrategyConfig.lookbackHours,
+    ),
+    signalTtlMinutes: integerEnvironment(
+      'NEWS_SIGNAL_TTL_MINUTES',
+      defaultNewsStrategyConfig.signalTtlMinutes,
+    ),
+    limitPerSymbol: integerEnvironment(
+      'NEWS_LIMIT_PER_SYMBOL',
+      defaultNewsStrategyConfig.limitPerSymbol,
+    ),
+    minimumConfidence: numberEnvironment(
+      'NEWS_MINIMUM_CONFIDENCE',
+      defaultNewsStrategyConfig.minimumConfidence,
+    ),
+    minimumRelevance: numberEnvironment(
+      'NEWS_MINIMUM_RELEVANCE',
+      defaultNewsStrategyConfig.minimumRelevance,
+    ),
+    minimumImpact,
+  };
+}
+
+function newsStocksFromEnvironment(): NewsStockConfig[] {
+  const requested = (
+    process.env.NEWS_STRATEGY_SYMBOLS ?? 'NVDA,AAPL,MSFT,AMZN,META'
+  )
+    .split(',')
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter(Boolean);
+  const defaults = new Map(
+    defaultNewsStocks.map((stock) => [stock.symbol, stock]),
+  );
+  return [...new Set(requested)].map(
+    (symbol) =>
+      defaults.get(symbol) ?? {
+        symbol,
+        companyName: symbol,
+        aliases: [symbol],
+        topics: [],
+        officialFeedUrls: [],
+        enabled: true,
+      },
+  );
+}
+
+function newsSources(apiKey: string, secretKey: string): NewsSourcePort[] {
+  const sources: NewsSourcePort[] = [
+    new AlpacaNewsSource(
+      apiKey,
+      secretKey,
+      process.env.ALPACA_DATA_BASE_URL ?? 'https://data.alpaca.markets',
+    ),
+    new GoogleNewsRssSource(),
+    new OfficialCompanyNewsSource(),
+  ];
+  if (booleanEnvironment('GDELT_NEWS_ENABLED', false)) {
+    sources.push(new GdeltNewsSource({ timeoutMs: 30_000 }));
+  }
+  if (process.env.FINNHUB_API_KEY) {
+    sources.push(new FinnhubNewsSource(process.env.FINNHUB_API_KEY));
+  }
+  if (process.env.ALPHA_VANTAGE_API_KEY) {
+    sources.push(new AlphaVantageNewsSource(process.env.ALPHA_VANTAGE_API_KEY));
+  }
+  return sources;
 }
 
 function wait(milliseconds: number, signal: AbortSignal): Promise<void> {
@@ -105,25 +217,45 @@ async function main(): Promise<void> {
       secretKey,
       binaryPath: process.env.ALPACA_CLI_PATH ?? 'alpaca',
       expectedAccountId: process.env.ALPACA_EXPECTED_ACCOUNT_ID,
-      minimumOptionsLevel: integerEnvironment(
-        'ALPACA_MIN_OPTIONS_LEVEL',
-        2,
-      ),
+      minimumOptionsLevel: integerEnvironment('ALPACA_MIN_OPTIONS_LEVEL', 2),
     }),
     true,
   );
   const dataCoordinator = new AgentDataCoordinator(alpaca);
+  const riskManager = new ExplainableRiskManager(alpaca, policyProvider);
   const coordinator = new AgentScanCoordinator(
     {
       contextSource: new AlpacaDecisionContextSource(dataCoordinator),
       decisionAgent: new TechnicalDecisionAgentAdapter(
         decisionAgentConfigForTimeframe(schedule.timeframe),
       ),
-      riskManager: new ExplainableRiskManager(alpaca, policyProvider),
+      riskManager,
       executionManager: execution,
     },
     schedule,
   );
+  const newsEnabled = booleanEnvironment('NEWS_STRATEGY_ENABLED', false);
+  const newsSchedule = newsScheduleFromEnvironment();
+  const newsUniverse = newsStocksFromEnvironment();
+  const newsCoordinator = newsEnabled
+    ? new NewsStrategyCoordinator(
+        {
+          acquisition: new NewsAcquisitionService(
+            newsSources(apiKey, secretKey),
+          ),
+          decisionAgent: new NewsDecisionAgent(
+            new OllamaNewsModel({
+              modelName: process.env.NEWS_LLM_MODEL ?? 'qwen3:8b',
+              baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
+            }),
+            newsSchedule,
+          ),
+          riskManager,
+          executionManager: execution,
+        },
+        newsSchedule,
+      )
+    : null;
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());
   process.once('SIGTERM', () => controller.abort());
@@ -133,6 +265,13 @@ async function main(): Promise<void> {
     mode: 'autonomous_paper',
     schedule,
     nextScanAt: coordinator.nextScanAt(),
+    newsStrategy: {
+      enabled: newsEnabled,
+      schedule: newsSchedule,
+      symbols: newsUniverse.map((stock) => stock.symbol),
+      model: process.env.NEWS_LLM_MODEL ?? 'qwen3:8b',
+      nextRunAt: newsCoordinator?.nextRunAt() ?? null,
+    },
   });
 
   while (!controller.signal.aborted) {
@@ -169,6 +308,32 @@ async function main(): Promise<void> {
           positionSupervisionError: result.positionSupervisionError,
           positionExecutionError: result.positionExecutionError,
         });
+      }
+      if (newsCoordinator) {
+        const newsResult = await newsCoordinator.runDue(newsUniverse);
+        if (newsResult.kind === 'completed') {
+          writeEvent({
+            event: 'news_scan_completed',
+            runId: newsResult.runId,
+            symbols: newsUniverse.map((stock) => stock.symbol),
+            sources: newsResult.acquisition.sourceReports,
+            articlesReceived: newsResult.acquisition.articlesReceived,
+            duplicatesRemoved: newsResult.acquisition.duplicatesRemoved,
+            decisions: newsResult.results.map((item) => ({
+              symbol: item.symbol,
+              outcome: item.kind,
+              direction:
+                item.kind === 'risk_reviewed' ? item.decision.direction : null,
+              risk:
+                item.kind === 'risk_reviewed' ? item.riskDecision.kind : null,
+              execution:
+                item.kind === 'risk_reviewed'
+                  ? (item.executionProposal?.status ?? null)
+                  : null,
+              error: item.kind === 'failed' ? item.error : null,
+            })),
+          });
+        }
       }
     } catch (error) {
       writeEvent({

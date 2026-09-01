@@ -65,7 +65,19 @@ export class TechnicalDecisionAgentAdapter implements DecisionAgentPort {
         name: this.agentName,
         version: this.agentVersion,
       },
+      strategy: {
+        id: 'technical',
+        frequencyMinutes: Math.max(
+          1,
+          Math.round(
+            (new Date(request.scan.validUntil).getTime() -
+              new Date(request.scan.scheduledAt).getTime()) /
+              60_000,
+          ),
+        ),
+      },
       analysis: {
+        kind: 'technical',
         symbol: result.underlying,
         marketObservedAt: result.observedAt,
         latestPrice: result.features.latestPrice,
@@ -74,7 +86,14 @@ export class TechnicalDecisionAgentAdapter implements DecisionAgentPort {
         signalStrength: Math.abs(result.finalScore),
         features: result.features,
         contributions: result.contributions,
-        dataQuality: result.dataQuality,
+        dataQuality: {
+          sufficient: result.dataQuality.sufficient,
+          stale: result.dataQuality.stale,
+          observationsReceived: result.dataQuality.barsReceived,
+          observationsRequired: result.dataQuality.barsRequired,
+          latestObservationAt: result.dataQuality.latestBarAt,
+          warnings: result.dataQuality.warnings,
+        },
         sentiment: result.sentiment,
       },
     } as const;
