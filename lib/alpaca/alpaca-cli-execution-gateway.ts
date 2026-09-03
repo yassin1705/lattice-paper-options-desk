@@ -125,7 +125,8 @@ export class AlpacaCliExecutionGateway implements PaperOrderGateway {
 
   async submitOrder(order: ExecutionOrderRequest): Promise<ExecutionReceipt> {
     this.validateOrder(order);
-    await this.verifyPaperAccount();
+    const optionOrder = Boolean(parseOptionSymbol(order.symbol));
+    await this.verifyPaperAccount(optionOrder);
 
     const orders = await this.run([
       'order',
@@ -133,7 +134,7 @@ export class AlpacaCliExecutionGateway implements PaperOrderGateway {
       '--status',
       'all',
       '--asset-class',
-      'us_option',
+      optionOrder ? 'us_option' : 'us_equity',
       '--limit',
       '500',
       '--quiet',
@@ -146,7 +147,7 @@ export class AlpacaCliExecutionGateway implements PaperOrderGateway {
     );
     if (existing) return receipt(existing);
 
-    const created = await this.run([
+    const submitArguments = [
       'order',
       'submit',
       '--symbol',
@@ -161,28 +162,41 @@ export class AlpacaCliExecutionGateway implements PaperOrderGateway {
       order.limitPrice.toFixed(2),
       '--time-in-force',
       order.timeInForce,
-      '--position-intent',
-      order.positionIntent,
+    ];
+    if (order.positionIntent) {
+      submitArguments.push('--position-intent', order.positionIntent);
+    }
+    submitArguments.push(
       '--client-order-id',
       order.clientOrderId,
       '--quiet',
-    ]);
+    );
+    const created = await this.run(submitArguments);
     return receipt(created);
   }
 
   private validateOrder(order: ExecutionOrderRequest): void {
-    if (!parseOptionSymbol(order.symbol)) {
-      throw new Error('The CLI execution gateway accepts option contracts only.');
+    const optionOrder = Boolean(parseOptionSymbol(order.symbol));
+    if (!optionOrder && !/^[A-Z][A-Z0-9.-]{0,9}$/.test(order.symbol)) {
+      throw new Error('The CLI execution gateway requires a valid symbol.');
     }
-    if (!Number.isInteger(order.quantity) || order.quantity < 1) {
-      throw new Error('The CLI execution gateway requires a positive quantity.');
+    if (
+      !Number.isFinite(order.quantity) ||
+      order.quantity <= 0 ||
+      (optionOrder && !Number.isInteger(order.quantity))
+    ) {
+      throw new Error(
+        optionOrder
+          ? 'The CLI execution gateway requires a positive whole-contract quantity.'
+          : 'The CLI execution gateway requires a positive share quantity.',
+      );
     }
     if (!Number.isFinite(order.limitPrice) || order.limitPrice <= 0) {
       throw new Error('The CLI execution gateway requires a positive limit price.');
     }
   }
 
-  private async verifyPaperAccount(): Promise<void> {
+  private async verifyPaperAccount(requireOptions: boolean): Promise<void> {
     const account = record(
       await this.run(['account', 'get', '--quiet']),
       'account',
@@ -201,7 +215,7 @@ export class AlpacaCliExecutionGateway implements PaperOrderGateway {
     const optionsLevel = number(
       account.options_trading_level ?? account.options_approved_level,
     );
-    if (optionsLevel < this.minimumOptionsLevel) {
+    if (requireOptions && optionsLevel < this.minimumOptionsLevel) {
       throw new Error(
         `The Alpaca paper account requires options level ${this.minimumOptionsLevel} or higher.`,
       );

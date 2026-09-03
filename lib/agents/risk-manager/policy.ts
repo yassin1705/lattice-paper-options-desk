@@ -51,7 +51,16 @@ export type RiskPolicySnapshot = {
 export const defaultRiskPolicy: RiskPolicy = {
   schemaVersion: '1',
   profile: 'conservative',
-  approvedUnderlyings: ['SPY', 'QQQ', 'GLD'],
+  approvedUnderlyings: [
+    'NVDA',
+    'AAPL',
+    'MSFT',
+    'AMZN',
+    'META',
+    'SPY',
+    'QQQ',
+    'GLD',
+  ],
   holdingHorizon: 'swing',
   dailyLossLimitPercent: 0.75,
   entry: {

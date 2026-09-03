@@ -1,12 +1,17 @@
 {
-  "name": "sites-project",
+  "name": "lattice-paper-options-desk",
   "version": "0.1.0",
+  "description": "A local-first, explainable AI workspace for Alpaca paper options trading.",
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "tsx scripts/run-local-dashboard.ts",
+    "dev:hot": "vinext dev",
+    "public:install-tunnel": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-cloudflared.ps1",
+    "public:demo": "tsx scripts/run-public-demo.ts",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "test:decision": "vitest run --config vitest.config.ts lib/agents/decision-maker/tests",
@@ -18,6 +23,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@shadcn/react": "0.3.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

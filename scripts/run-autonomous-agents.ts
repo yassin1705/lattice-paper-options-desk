@@ -11,9 +11,9 @@ import {
 import { decisionAgentConfigForTimeframe } from '@/lib/agents/decision-maker/config';
 import { TechnicalDecisionAgentAdapter } from '@/lib/agents/decision-maker/technical-decision-agent-adapter';
 import { ExecutionManager } from '@/lib/agents/execution/execution-manager';
+import { LocalSqliteDecisionLedger } from '@/lib/agents/decision-ledger/local-sqlite-decision-ledger';
 import { ExplainableRiskManager } from '@/lib/agents/risk-manager/explainable-risk-manager';
 import {
-  defaultNewsStocks,
   defaultNewsStrategyConfig,
   type NewsStrategyConfig,
 } from '@/lib/agents/news/config';
@@ -22,6 +22,12 @@ import { NewsDecisionAgent } from '@/lib/agents/news/news-decision-agent';
 import { NewsStrategyCoordinator } from '@/lib/agents/news/news-strategy-coordinator';
 import { OllamaNewsModel } from '@/lib/agents/news/ollama-news-model';
 import {
+  defaultNewsStrategySettings,
+  HttpNewsStrategySettingsProvider,
+  newsStocksForSymbols,
+} from '@/lib/agents/news/settings';
+import { HttpTechnicalStrategySettingsProvider } from '@/lib/agents/orchestration/technical-strategy-settings';
+import {
   AlpacaNewsSource,
   AlphaVantageNewsSource,
   FinnhubNewsSource,
@@ -29,7 +35,7 @@ import {
   GoogleNewsRssSource,
   OfficialCompanyNewsSource,
 } from '@/lib/agents/news/sources/http-news-sources';
-import type { NewsSourcePort, NewsStockConfig } from '@/lib/agents/news/types';
+import type { NewsSourcePort } from '@/lib/agents/news/types';
 import { HttpRiskPolicyProvider } from '@/lib/agents/risk-manager/http-policy-provider';
 import { AlpacaCliExecutionGateway } from '@/lib/alpaca/alpaca-cli-execution-gateway';
 import { AlpacaHttpReadGateway } from '@/lib/alpaca/alpaca-http-read-gateway';
@@ -90,26 +96,23 @@ function scheduleFromEnvironment(): ScanScheduleConfig {
 }
 
 function requiredEnvironment(name: string): string {
-  const value = process.env[name];
+  const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is missing from .env.local.`);
   return value;
 }
 
-function newsScheduleFromEnvironment(): NewsStrategyConfig {
+function newsScheduleFromEnvironment(
+  frequencyMinutes: number,
+  lookbackHours: number,
+): NewsStrategyConfig {
   const minimumImpact =
     process.env.NEWS_MINIMUM_IMPACT ?? defaultNewsStrategyConfig.minimumImpact;
   if (minimumImpact !== 'medium' && minimumImpact !== 'high') {
     throw new Error('NEWS_MINIMUM_IMPACT must be medium or high.');
   }
   return {
-    frequencyMinutes: integerEnvironment(
-      'NEWS_SCAN_FREQUENCY_MINUTES',
-      defaultNewsStrategyConfig.frequencyMinutes,
-    ),
-    lookbackHours: integerEnvironment(
-      'NEWS_LOOKBACK_HOURS',
-      defaultNewsStrategyConfig.lookbackHours,
-    ),
+    frequencyMinutes,
+    lookbackHours,
     signalTtlMinutes: integerEnvironment(
       'NEWS_SIGNAL_TTL_MINUTES',
       defaultNewsStrategyConfig.signalTtlMinutes,
@@ -128,29 +131,6 @@ function newsScheduleFromEnvironment(): NewsStrategyConfig {
     ),
     minimumImpact,
   };
-}
-
-function newsStocksFromEnvironment(): NewsStockConfig[] {
-  const requested = (
-    process.env.NEWS_STRATEGY_SYMBOLS ?? 'NVDA,AAPL,MSFT,AMZN,META'
-  )
-    .split(',')
-    .map((symbol) => symbol.trim().toUpperCase())
-    .filter(Boolean);
-  const defaults = new Map(
-    defaultNewsStocks.map((stock) => [stock.symbol, stock]),
-  );
-  return [...new Set(requested)].map(
-    (symbol) =>
-      defaults.get(symbol) ?? {
-        symbol,
-        companyName: symbol,
-        aliases: [symbol],
-        topics: [],
-        officialFeedUrls: [],
-        enabled: true,
-      },
-  );
 }
 
 function newsSources(apiKey: string, secretKey: string): NewsSourcePort[] {
@@ -201,9 +181,29 @@ async function main(): Promise<void> {
   const tradingBaseUrl =
     process.env.ALPACA_API_BASE_URL ?? 'https://paper-api.alpaca.markets';
   const schedule = scheduleFromEnvironment();
-  const policyProvider = new HttpRiskPolicyProvider(
-    process.env.LOCAL_DASHBOARD_URL ?? 'http://localhost:3000',
+  const dashboardUrl =
+    process.env.LOCAL_DASHBOARD_URL ?? 'http://localhost:3000';
+  const policyProvider = new HttpRiskPolicyProvider(dashboardUrl);
+  const newsSettingsProvider = new HttpNewsStrategySettingsProvider(
+    dashboardUrl,
   );
+  const technicalSettingsProvider = new HttpTechnicalStrategySettingsProvider(
+    dashboardUrl,
+  );
+  let initialNewsSettings = {
+    revision: 0,
+    updatedAt: new Date(0).toISOString(),
+    settings: defaultNewsStrategySettings,
+  };
+  try {
+    initialNewsSettings = await newsSettingsProvider.getSettings();
+  } catch {
+    writeEvent({
+      event: 'news_settings_unavailable',
+      error:
+        'The local dashboard is not ready; the news strategy starts disabled.',
+    });
+  }
   const alpaca = new AlpacaHttpReadGateway({
     apiKey,
     secretKey,
@@ -216,10 +216,10 @@ async function main(): Promise<void> {
       apiKey,
       secretKey,
       binaryPath: process.env.ALPACA_CLI_PATH ?? 'alpaca',
-      expectedAccountId: process.env.ALPACA_EXPECTED_ACCOUNT_ID,
+      expectedAccountId: requiredEnvironment('ALPACA_EXPECTED_ACCOUNT_ID'),
       minimumOptionsLevel: integerEnvironment('ALPACA_MIN_OPTIONS_LEVEL', 2),
     }),
-    true,
+    booleanEnvironment('AUTONOMOUS_EXECUTION_ENABLED', false),
   );
   const dataCoordinator = new AgentDataCoordinator(alpaca);
   const riskManager = new ExplainableRiskManager(alpaca, policyProvider);
@@ -234,28 +234,29 @@ async function main(): Promise<void> {
     },
     schedule,
   );
-  const newsEnabled = booleanEnvironment('NEWS_STRATEGY_ENABLED', false);
-  const newsSchedule = newsScheduleFromEnvironment();
-  const newsUniverse = newsStocksFromEnvironment();
-  const newsCoordinator = newsEnabled
-    ? new NewsStrategyCoordinator(
-        {
-          acquisition: new NewsAcquisitionService(
-            newsSources(apiKey, secretKey),
-          ),
-          decisionAgent: new NewsDecisionAgent(
-            new OllamaNewsModel({
-              modelName: process.env.NEWS_LLM_MODEL ?? 'qwen3:8b',
-              baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
-            }),
-            newsSchedule,
-          ),
-          riskManager,
-          executionManager: execution,
-        },
+  const newsSchedule = newsScheduleFromEnvironment(
+    initialNewsSettings.settings.frequencyMinutes,
+    initialNewsSettings.settings.lookbackHours,
+  );
+  const newsCoordinator = new NewsStrategyCoordinator(
+    {
+      acquisition: new NewsAcquisitionService(newsSources(apiKey, secretKey)),
+      decisionAgent: new NewsDecisionAgent(
+        new OllamaNewsModel({
+          modelName: initialNewsSettings.settings.modelName,
+          baseUrl: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
+          timeoutMs: integerEnvironment('OLLAMA_TIMEOUT_MS', 300_000),
+        }),
         newsSchedule,
-      )
-    : null;
+      ),
+      riskManager,
+      executionManager: execution,
+    },
+    newsSchedule,
+  );
+  const decisionLedger = new LocalSqliteDecisionLedger(
+    process.env.AGENT_DECISION_DB_PATH,
+  );
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());
   process.once('SIGTERM', () => controller.abort());
@@ -263,55 +264,80 @@ async function main(): Promise<void> {
   writeEvent({
     event: 'orchestrator_started',
     mode: 'autonomous_paper',
+    executionEnabled: booleanEnvironment('AUTONOMOUS_EXECUTION_ENABLED', false),
     schedule,
     nextScanAt: coordinator.nextScanAt(),
+    technicalStrategy: await technicalSettingsProvider
+      .getSettings()
+      .catch(() => ({ enabled: false })),
     newsStrategy: {
-      enabled: newsEnabled,
+      enabled: initialNewsSettings.settings.enabled,
       schedule: newsSchedule,
-      symbols: newsUniverse.map((stock) => stock.symbol),
-      model: process.env.NEWS_LLM_MODEL ?? 'qwen3:8b',
-      nextRunAt: newsCoordinator?.nextRunAt() ?? null,
+      symbols: initialNewsSettings.settings.symbols,
+      model: initialNewsSettings.settings.modelName,
+      nextRunAt: initialNewsSettings.settings.enabled
+        ? newsCoordinator.nextRunAt()
+        : null,
     },
   });
 
   while (!controller.signal.aborted) {
     try {
       const policy = await policyProvider.getPolicy();
-      const result = await coordinator.runDueScan(
-        policy.policy.approvedUnderlyings,
-      );
-      if (result.kind === 'completed') {
-        writeEvent({
-          event: 'scan_completed',
-          scanId: result.scan.scanId,
-          symbols: policy.policy.approvedUnderlyings,
-          decisions: result.results.map((item) => ({
-            symbol: item.symbol,
-            outcome: item.kind,
-            risk: item.kind === 'risk_reviewed' ? item.riskDecision.kind : null,
-            riskReasons:
-              item.kind === 'risk_reviewed' &&
-              item.riskDecision.kind === 'rejected_trade'
-                ? item.riskDecision.reasons
-                : [],
-            execution:
-              item.kind === 'risk_reviewed'
-                ? (item.executionProposal?.status ?? null)
-                : null,
-            error: item.kind === 'failed' ? item.error : null,
-          })),
-          exits: result.positionExecutionProposals.map((proposal) => ({
-            symbol: proposal.order.symbol,
-            status: proposal.status,
-            error: proposal.error,
-          })),
-          positionSupervisionError: result.positionSupervisionError,
-          positionExecutionError: result.positionExecutionError,
-        });
+      const technicalSettings = await technicalSettingsProvider.getSettings();
+      if (technicalSettings.enabled) {
+        const result = await coordinator.runDueScan(
+          policy.policy.approvedUnderlyings,
+        );
+        if (result.kind === 'completed') {
+          const decisionsStored = decisionLedger.recordResults(
+            'technical',
+            result.scan.scanId,
+            result.results,
+          );
+          writeEvent({
+            event: 'scan_completed',
+            scanId: result.scan.scanId,
+            symbols: policy.policy.approvedUnderlyings,
+            decisionsStored,
+            decisions: result.results.map((item) => ({
+              symbol: item.symbol,
+              outcome: item.kind,
+              risk:
+                item.kind === 'risk_reviewed' ? item.riskDecision.kind : null,
+              riskReasons:
+                item.kind === 'risk_reviewed' &&
+                item.riskDecision.kind === 'rejected_trade'
+                  ? item.riskDecision.reasons
+                  : [],
+              execution:
+                item.kind === 'risk_reviewed'
+                  ? (item.executionProposal?.status ?? null)
+                  : null,
+              error: item.kind === 'failed' ? item.error : null,
+            })),
+            exits: result.positionExecutionProposals.map((proposal) => ({
+              symbol: proposal.order.symbol,
+              status: proposal.status,
+              error: proposal.error,
+            })),
+            positionSupervisionError: result.positionSupervisionError,
+            positionExecutionError: result.positionExecutionError,
+          });
+        }
       }
-      if (newsCoordinator) {
+      const newsSettings = await newsSettingsProvider.getSettings();
+      if (newsSettings.settings.enabled) {
+        const newsUniverse = newsStocksForSymbols(
+          newsSettings.settings.symbols,
+        );
         const newsResult = await newsCoordinator.runDue(newsUniverse);
         if (newsResult.kind === 'completed') {
+          const decisionsStored = decisionLedger.recordResults(
+            'news_llm',
+            newsResult.runId,
+            newsResult.results,
+          );
           writeEvent({
             event: 'news_scan_completed',
             runId: newsResult.runId,
@@ -319,6 +345,7 @@ async function main(): Promise<void> {
             sources: newsResult.acquisition.sourceReports,
             articlesReceived: newsResult.acquisition.articlesReceived,
             duplicatesRemoved: newsResult.acquisition.duplicatesRemoved,
+            decisionsStored,
             decisions: newsResult.results.map((item) => ({
               symbol: item.symbol,
               outcome: item.kind,
@@ -353,6 +380,7 @@ async function main(): Promise<void> {
     );
   }
 
+  decisionLedger.close();
   writeEvent({ event: 'orchestrator_stopped' });
 }
 

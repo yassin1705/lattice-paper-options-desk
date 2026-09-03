@@ -226,6 +226,31 @@ describe('ExplainableRiskManager', () => {
     );
   });
 
+  it('allows a review-only user-directed proposal while preserving warnings', async () => {
+    const manager = new ExplainableRiskManager(
+      gateway({ clock: { ...marketClock, isOpen: false } }),
+      policyProvider(),
+      () => NOW,
+    );
+    const signal = await opportunity();
+    signal.analysis.signalStrength = 0.1;
+    const result = await manager.assess(signal, scan, {
+      userDirected: true,
+      proposalOnly: true,
+    });
+    expect(result.kind).toBe('approved_trade_plan');
+    if (result.kind !== 'approved_trade_plan') return;
+    expect(result.rules).toContainEqual(
+      expect.objectContaining({
+        ruleId: 'minimum_signal_strength',
+        outcome: 'warning',
+      }),
+    );
+    expect(result.rules).toContainEqual(
+      expect.objectContaining({ ruleId: 'market_open', outcome: 'warning' }),
+    );
+  });
+
   it('rejects a fresh news signal that opposes the technical strategy', async () => {
     const manager = new ExplainableRiskManager(
       gateway(),

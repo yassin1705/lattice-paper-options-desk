@@ -37,10 +37,14 @@ function paperBaseUrl(value: string): string {
 function receipt(value: unknown): ExecutionReceipt {
   const order =
     value && typeof value === 'object' ? (value as AlpacaOrder) : {};
+  const text = (candidate: unknown, fallback = '') =>
+    typeof candidate === 'string' || typeof candidate === 'number'
+      ? String(candidate)
+      : fallback;
   return {
-    alpacaOrderId: String(order.id ?? ''),
-    clientOrderId: String(order.client_order_id ?? ''),
-    status: String(order.status ?? 'unknown'),
+    alpacaOrderId: text(order.id),
+    clientOrderId: text(order.client_order_id),
+    status: text(order.status, 'unknown'),
     submittedAt:
       typeof order.submitted_at === 'string' ? order.submitted_at : null,
   };
@@ -85,7 +89,7 @@ export class AlpacaPaperExecutionGateway implements PaperOrderGateway {
     path: string,
     init: RequestInit,
     allowNotFound = false,
-  ): Promise<unknown | null> {
+  ): Promise<unknown> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
       headers: {

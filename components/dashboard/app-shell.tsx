@@ -1,4 +1,5 @@
 import { Activity, CircleDollarSign, SlidersHorizontal } from 'lucide-react';
+import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
 import type { ConnectionStatus } from '@/lib/dashboard/types';
@@ -13,7 +14,12 @@ type AppShellProps = {
 };
 
 const navigation = [
-  { href: '/account', label: 'Account', id: 'account' as const, icon: SlidersHorizontal },
+  {
+    href: '/account',
+    label: 'Account',
+    id: 'account' as const,
+    icon: SlidersHorizontal,
+  },
   { href: '/trades', label: 'Trades', id: 'trades' as const, icon: Activity },
 ];
 
@@ -26,21 +32,29 @@ export function AppShell({ active, children, connection }: AppShellProps) {
       <header className="sticky top-0 z-40 border-b border-white/7 bg-[#09110f]/92 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
-            <a href="/account" className="flex items-center gap-2.5" aria-label="Lattice home">
+            <Link
+              href="/account"
+              className="flex items-center gap-2.5"
+              aria-label="Lattice home"
+            >
               <span className="grid size-9 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-emerald-300">
                 <CircleDollarSign className="size-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold tracking-[0.18em] text-white">LATTICE</p>
-                <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Paper options desk</p>
+                <p className="text-sm font-semibold tracking-[0.18em] text-white">
+                  LATTICE
+                </p>
+                <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                  Paper options desk
+                </p>
               </div>
-            </a>
+            </Link>
 
             <nav className="hidden items-center gap-1 rounded-xl border border-white/7 bg-white/[0.025] p-1 sm:flex">
               {navigation.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <a
+                  <Link
                     key={item.id}
                     href={item.href}
                     className={cn(
@@ -52,7 +66,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
                   >
                     <Icon className="size-3.5" />
                     {item.label}
-                  </a>
+                  </Link>
                 );
               })}
             </nav>
@@ -71,7 +85,11 @@ export function AppShell({ active, children, connection }: AppShellProps) {
             <span
               className={cn(
                 'size-1.5 rounded-full',
-                connected ? 'bg-emerald-300' : errored ? 'bg-rose-300' : 'bg-amber-300',
+                connected
+                  ? 'bg-emerald-300'
+                  : errored
+                    ? 'bg-rose-300'
+                    : 'bg-amber-300',
               )}
             />
             {connection?.label ?? 'Mock mode'}
@@ -79,13 +97,15 @@ export function AppShell({ active, children, connection }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1500px] px-4 py-7 sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto max-w-[1500px] px-4 py-7 sm:px-6 lg:px-8">
+        {children}
+      </main>
 
       <nav className="fixed inset-x-4 bottom-4 z-40 flex items-center justify-center gap-1 rounded-2xl border border-white/10 bg-[#0d1714]/95 p-1.5 shadow-2xl backdrop-blur sm:hidden">
         {navigation.map((item) => {
           const Icon = item.icon;
           return (
-            <a
+            <Link
               key={item.id}
               href={item.href}
               className={cn(
@@ -95,7 +115,7 @@ export function AppShell({ active, children, connection }: AppShellProps) {
             >
               <Icon className="size-4" />
               {item.label}
-            </a>
+            </Link>
           );
         })}
       </nav>

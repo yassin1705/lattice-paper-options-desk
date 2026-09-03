@@ -118,7 +118,10 @@ describe('OllamaNewsModel', () => {
     });
 
     expect(result.direction).toBe('bullish');
-    const request = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    const body = fetcher.mock.calls[0]?.[1]?.body;
+    if (typeof body !== 'string')
+      throw new Error('Expected a JSON request body.');
+    const request = JSON.parse(body);
     expect(request.model).toBe('qwen3:8b');
     expect(request.think).toBe(false);
     expect(request.format.type).toBe('object');

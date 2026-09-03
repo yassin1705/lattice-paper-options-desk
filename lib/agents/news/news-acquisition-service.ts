@@ -19,7 +19,7 @@ function canonicalUrl(value: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    for (const key of [...url.searchParams.keys()]) {
+    for (const key of Array.from(url.searchParams.keys())) {
       if (
         key.startsWith('utm_') ||
         ['ref', 'source', 'campaign'].includes(key)

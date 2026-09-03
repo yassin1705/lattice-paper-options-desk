@@ -17,6 +17,11 @@ import type { RiskPolicyProvider } from '@/lib/agents/risk-manager/policy-provid
 import { evaluateEntryRules } from '@/lib/agents/risk-manager/rules/entry-rules';
 import type { BaseRiskSnapshot } from '@/lib/agents/risk-manager/types';
 
+export type RiskAssessmentOptions = {
+  userDirected?: boolean;
+  proposalOnly?: boolean;
+};
+
 function dateOffset(now: Date, days: number): string {
   const value = new Date(now);
   value.setUTCDate(value.getUTCDate() + days);
@@ -64,6 +69,7 @@ export class ExplainableRiskManager implements RiskManagerPort {
   async assess(
     signal: OpportunityMessage,
     scan: ScanDescriptor,
+    options: RiskAssessmentOptions = {},
   ): Promise<RiskDecision> {
     const now = this.clock();
     const signalsForSymbol =
@@ -91,6 +97,33 @@ export class ExplainableRiskManager implements RiskManagerPort {
         ? `The ${conflictingSignal.strategy.id} strategy has a fresh ${conflictingSignal.direction} signal for the same underlying.`
         : 'No other strategy has a fresh opposing signal for this underlying.',
     });
+    if (options.userDirected) {
+      for (const result of rules) {
+        if (
+          result.outcome === 'fail' &&
+          result.ruleId === 'minimum_signal_strength'
+        ) {
+          result.outcome = 'warning';
+          result.explanation =
+            'Signal strength is below the recommendation threshold; the user explicitly supplied the trade direction.';
+        }
+      }
+    }
+    if (options.proposalOnly) {
+      for (const result of rules) {
+        if (
+          result.outcome === 'fail' &&
+          (result.ruleId === 'market_open' ||
+            result.ruleId === 'entry_cutoff')
+        ) {
+          result.outcome = 'warning';
+          result.explanation =
+            result.ruleId === 'market_open'
+              ? 'The market is closed; this proposal may be reviewed now but cannot be executed until the market opens.'
+              : 'The entry cutoff prevents immediate execution, but a review-only proposal may still be prepared.';
+        }
+      }
+    }
     if (failedRules(rules).length > 0)
       return this.rejection(signal, snapshot, rules, now);
 

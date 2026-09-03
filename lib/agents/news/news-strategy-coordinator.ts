@@ -126,56 +126,63 @@ export class NewsStrategyCoordinator {
       timeframe: '1Hour',
       lookbackBars: 50,
     };
-    const results = await Promise.all(
-      stocks.map(async (stock): Promise<NewsSymbolResult> => {
-        try {
-          const decision = await this.dependencies.decisionAgent.evaluateStock(
-            acquisition,
-            stock,
-            runId,
-            started.toISOString(),
-            validUntil,
-          );
-          if (decision.kind === 'no_opportunity') {
-            return { kind: 'no_opportunity', symbol: stock.symbol, decision };
-          }
-          const riskDecision = await this.dependencies.riskManager.assess(
-            decision,
-            scan,
-          );
-          let executionProposal: ExecutionProposal | null = null;
-          let executionError: string | null = null;
-          if (this.dependencies.executionManager) {
-            try {
-              executionProposal =
-                await this.dependencies.executionManager.processEntry(
-                  riskDecision,
-                );
-            } catch (error) {
-              executionError =
-                error instanceof Error
-                  ? error.message
-                  : 'News entry handoff failed.';
-            }
-          }
-          return {
-            kind: 'risk_reviewed',
+    const results: NewsSymbolResult[] = [];
+    // Local models are deliberately evaluated one stock at a time. This keeps
+    // Qwen memory bounded and prevents Ollama's request queue from becoming the
+    // failure point during an unattended run.
+    for (const stock of stocks) {
+      try {
+        const decision = await this.dependencies.decisionAgent.evaluateStock(
+          acquisition,
+          stock,
+          runId,
+          started.toISOString(),
+          validUntil,
+        );
+        if (decision.kind === 'no_opportunity') {
+          results.push({
+            kind: 'no_opportunity',
             symbol: stock.symbol,
             decision,
-            riskDecision,
-            executionProposal,
-            executionError,
-          };
-        } catch (error) {
-          return {
-            kind: 'failed',
-            symbol: stock.symbol,
-            error:
-              error instanceof Error ? error.message : 'News strategy failed.',
-          };
+          });
+          continue;
         }
-      }),
-    );
+        const riskDecision = await this.dependencies.riskManager.assess(
+          decision,
+          scan,
+        );
+        let executionProposal: ExecutionProposal | null = null;
+        let executionError: string | null = null;
+        if (this.dependencies.executionManager) {
+          try {
+            executionProposal =
+              await this.dependencies.executionManager.processEntry(
+                riskDecision,
+              );
+          } catch (error) {
+            executionError =
+              error instanceof Error
+                ? error.message
+                : 'News entry handoff failed.';
+          }
+        }
+        results.push({
+          kind: 'risk_reviewed',
+          symbol: stock.symbol,
+          decision,
+          riskDecision,
+          executionProposal,
+          executionError,
+        });
+      } catch (error) {
+        results.push({
+          kind: 'failed',
+          symbol: stock.symbol,
+          error:
+            error instanceof Error ? error.message : 'News strategy failed.',
+        });
+      }
+    }
     return {
       kind: 'completed',
       runId,

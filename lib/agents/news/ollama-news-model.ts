@@ -160,6 +160,7 @@ function systemPrompt(): string {
     'Repeated coverage of the same event is not independent confirmation.',
     'Return neutral when evidence is weak, stale, promotional, indirect, or materially conflicting.',
     'Confidence measures certainty in the directional interpretation; relevance measures connection to the stock; impact measures likely price materiality.',
+    'Copy the supplied stock.symbol exactly into the output symbol field; never substitute a ticker mentioned in a story.',
     'supportingStoryIds may contain only IDs present in the request.',
     'Return only the JSON object required by the response schema.',
   ].join(' ');
@@ -168,6 +169,7 @@ function systemPrompt(): string {
 function userPrompt(request: NewsModelRequest): string {
   return JSON.stringify({
     task: 'Classify the likely stock-price direction caused by these news events.',
+    requiredOutputSymbol: request.stock.symbol,
     observedAt: request.observedAt,
     stock: {
       symbol: request.stock.symbol,
@@ -217,7 +219,13 @@ export class OllamaNewsModel implements NewsModelPort {
           model: this.modelName,
           stream: false,
           think: false,
-          format: outputSchema,
+          format: {
+            ...outputSchema,
+            properties: {
+              ...outputSchema.properties,
+              symbol: { type: 'string', enum: [request.stock.symbol] },
+            },
+          },
           options: { temperature: 0, num_ctx: 8_192 },
           messages: [
             { role: 'system', content: systemPrompt() },

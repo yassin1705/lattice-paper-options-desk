@@ -1,12 +1,37 @@
 import type { DashboardSnapshot, TradableAsset } from '@/lib/dashboard/types';
 
 export const mockAssets: TradableAsset[] = [
-  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', tradable: true, optionsEnabled: true },
-  { symbol: 'QQQ', name: 'Invesco QQQ Trust', tradable: true, optionsEnabled: true },
-  { symbol: 'GLD', name: 'SPDR Gold Shares', tradable: true, optionsEnabled: true },
+  {
+    symbol: 'SPY',
+    name: 'SPDR S&P 500 ETF Trust',
+    tradable: true,
+    optionsEnabled: true,
+  },
+  {
+    symbol: 'QQQ',
+    name: 'Invesco QQQ Trust',
+    tradable: true,
+    optionsEnabled: true,
+  },
+  {
+    symbol: 'GLD',
+    name: 'SPDR Gold Shares',
+    tradable: true,
+    optionsEnabled: true,
+  },
   { symbol: 'AAPL', name: 'Apple Inc.', tradable: true, optionsEnabled: true },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', tradable: true, optionsEnabled: true },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', tradable: true, optionsEnabled: true },
+  {
+    symbol: 'MSFT',
+    name: 'Microsoft Corporation',
+    tradable: true,
+    optionsEnabled: true,
+  },
+  {
+    symbol: 'NVDA',
+    name: 'NVIDIA Corporation',
+    tradable: true,
+    optionsEnabled: true,
+  },
 ];
 
 export const mockSnapshot: DashboardSnapshot = {
@@ -31,6 +56,22 @@ export const mockSnapshot: DashboardSnapshot = {
     { date: 'Aug 26', equity: 100180 },
     { date: 'Aug 27', equity: 100420 },
     { date: 'Aug 28', equity: 100612 },
+  ],
+  openStockPositions: [
+    {
+      id: 'mock-nvda-stock',
+      symbol: 'NVDA',
+      name: 'NVIDIA',
+      side: 'long',
+      quantity: 0.086557,
+      averageEntryPrice: 231.06,
+      currentPrice: 230.95,
+      marketValue: 19.99,
+      unrealizedProfitLoss: -0.01,
+      unrealizedProfitLossPercent: -0.05,
+      changeTodayPercent: 0.62,
+      lastUpdated: 'Just now',
+    },
   ],
   openPositions: [
     {
@@ -97,7 +138,9 @@ export const mockSnapshot: DashboardSnapshot = {
       profitLoss: 46,
       returnPercent: 21.1,
       status: 'closed',
-      report: 'Directional thesis reached its price target before the time-based exit.',
+      origin: 'technical',
+      report:
+        'Directional thesis reached its price target before the time-based exit.',
     },
     {
       id: 'mock-trade-2',
@@ -110,6 +153,7 @@ export const mockSnapshot: DashboardSnapshot = {
       profitLoss: -25,
       returnPercent: -14.37,
       status: 'closed',
+      origin: 'news_llm',
       report: 'Position closed after the directional thesis was invalidated.',
     },
     {
@@ -123,6 +167,7 @@ export const mockSnapshot: DashboardSnapshot = {
       profitLoss: 16,
       returnPercent: 5.48,
       status: 'closed',
+      origin: 'combined',
       report: 'Time-based exit completed with a small gain.',
     },
   ],

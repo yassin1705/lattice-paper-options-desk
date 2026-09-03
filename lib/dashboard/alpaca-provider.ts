@@ -12,6 +12,7 @@ import type {
   DashboardDataProvider,
   DashboardSnapshot,
   OpenOptionPosition,
+  OpenStockPosition,
   TradableAsset,
 } from '@/lib/dashboard/types';
 
@@ -33,7 +34,9 @@ function dateLabel(point: PortfolioHistoryPoint): string {
 }
 
 function parseOptionSymbol(symbol: string) {
-  const match = symbol.match(/^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/);
+  const match = symbol.match(
+    /^([A-Z]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/,
+  );
   if (!match) return null;
 
   const [, underlying, year, month, day, type, strike] = match;
@@ -53,7 +56,9 @@ function parseOptionSymbol(symbol: string) {
   };
 }
 
-function dashboardPosition(position: PositionSnapshot): OpenOptionPosition | null {
+function dashboardPosition(
+  position: PositionSnapshot,
+): OpenOptionPosition | null {
   const contract = parseOptionSymbol(position.symbol);
   if (!contract) return null;
 
@@ -76,9 +81,65 @@ function dashboardPosition(position: PositionSnapshot): OpenOptionPosition | nul
   };
 }
 
-function dashboardTrade(order: OrderSnapshot): CompletedOptionTrade | null {
+function dashboardStockPosition(
+  position: PositionSnapshot,
+): OpenStockPosition | null {
+  if (position.assetClass !== 'us_equity') return null;
+  return {
+    id: position.assetId || position.symbol,
+    symbol: position.symbol,
+    name: ASSET_NAMES[position.symbol] ?? position.symbol,
+    side: position.side,
+    quantity: position.quantity,
+    averageEntryPrice: position.averageEntryPrice,
+    currentPrice: position.currentPrice,
+    marketValue: position.marketValue,
+    unrealizedProfitLoss: position.unrealizedProfitLoss,
+    unrealizedProfitLossPercent: position.unrealizedProfitLossPercent,
+    changeTodayPercent: position.changeTodayPercent,
+    lastUpdated: position.observedAt,
+  };
+}
+
+function tradeOrigin(
+  clientOrderId: string | null,
+): CompletedOptionTrade['origin'] {
+  if (!clientOrderId) return 'manual';
+  if (clientOrderId.startsWith('agent-entry-t-')) return 'technical';
+  if (clientOrderId.startsWith('agent-entry-n-')) return 'news_llm';
+  if (clientOrderId.startsWith('agent-entry-c-')) return 'combined';
+  if (clientOrderId.startsWith('agent-entry-r')) return 'technical';
+  return clientOrderId.startsWith('agent-') ? 'unknown' : 'manual';
+}
+
+function dashboardTrade(
+  order: OrderSnapshot,
+  orders: OrderSnapshot[],
+): CompletedOptionTrade | null {
   const contract = parseOptionSymbol(order.symbol);
-  if (!contract || order.status !== 'filled' || !order.filledAt) return null;
+  if (
+    !contract ||
+    order.status !== 'filled' ||
+    !order.filledAt ||
+    (order.side !== 'sell' && order.positionIntent !== 'sell_to_close')
+  )
+    return null;
+
+  const closedAt = new Date(order.filledAt).getTime();
+  const entry = orders
+    .filter(
+      (candidate) =>
+        candidate.symbol === order.symbol &&
+        candidate.side === 'buy' &&
+        candidate.status === 'filled' &&
+        candidate.filledAt &&
+        new Date(candidate.filledAt).getTime() <= closedAt,
+    )
+    .sort(
+      (left, right) =>
+        new Date(right.filledAt!).getTime() -
+        new Date(left.filledAt!).getTime(),
+    )[0];
 
   const optionLabel = contract.optionType === 'call' ? 'Call' : 'Put';
   const expirationLabel = new Intl.DateTimeFormat('en-US', {
@@ -87,18 +148,33 @@ function dashboardTrade(order: OrderSnapshot): CompletedOptionTrade | null {
     timeZone: 'UTC',
   }).format(new Date(`${contract.expiration}T00:00:00Z`));
 
+  const entryPrice = entry?.filledAveragePrice ?? null;
+  const exitPrice = order.filledAveragePrice;
+  const quantity = Math.min(
+    order.filledQuantity,
+    entry?.filledQuantity ?? order.filledQuantity,
+  );
+  const profitLoss =
+    entryPrice !== null && exitPrice !== null
+      ? (exitPrice - entryPrice) * quantity * 100
+      : null;
   return {
     id: order.id,
     closedAt: order.filledAt,
     underlying: contract.underlying,
     contract: `${optionLabel} · $${contract.strike.toLocaleString()} · ${expirationLabel}`,
-    quantity: order.filledQuantity,
-    entryPrice: null,
-    exitPrice: order.filledAveragePrice,
-    profitLoss: null,
-    returnPercent: null,
+    quantity,
+    entryPrice,
+    exitPrice,
+    profitLoss,
+    returnPercent:
+      profitLoss !== null && entryPrice
+        ? ((exitPrice! - entryPrice) / entryPrice) * 100
+        : null,
     status: 'closed',
-    report: 'Imported from Alpaca order history. P&L pairing will be added with the execution ledger.',
+    origin: tradeOrigin(entry?.clientOrderId ?? order.clientOrderId),
+    report:
+      'Imported from Alpaca order history. Detailed strategy reasoning will be added with the explainability ledger.',
   };
 }
 
@@ -128,7 +204,7 @@ export class AlpacaDashboardProvider implements DashboardDataProvider {
     const [account, history, positions, orders] = await Promise.all([
       this.alpaca.getAccount(),
       this.alpaca.getPortfolioHistory('1M', '1D'),
-      this.alpaca.getOpenPositions('us_option'),
+      this.alpaca.getOpenPositions(),
       this.alpaca.getOrders({
         status: 'closed',
         assetClass: 'us_option',
@@ -141,8 +217,11 @@ export class AlpacaDashboardProvider implements DashboardDataProvider {
     const openPositions = positions
       .map(dashboardPosition)
       .filter((position): position is OpenOptionPosition => position !== null);
+    const openStockPositions = positions
+      .map(dashboardStockPosition)
+      .filter((position): position is OpenStockPosition => position !== null);
     const completedTrades = orders
-      .map(dashboardTrade)
+      .map((order) => dashboardTrade(order, orders))
       .filter((trade): trade is CompletedOptionTrade => trade !== null);
     const lastEquity = account.lastEquity || account.equity;
     const todayProfitLoss = account.equity - lastEquity;
@@ -158,10 +237,13 @@ export class AlpacaDashboardProvider implements DashboardDataProvider {
         equity: account.equity,
         buyingPower: account.buyingPower,
         todayProfitLoss,
-        todayProfitLossPercent: lastEquity ? (todayProfitLoss / lastEquity) * 100 : 0,
+        todayProfitLossPercent: lastEquity
+          ? (todayProfitLoss / lastEquity) * 100
+          : 0,
         openRisk: openPositions.reduce(
           (total, position) =>
-            total + Math.abs(position.averageEntryPrice * position.quantity * 100),
+            total +
+            Math.abs(position.averageEntryPrice * position.quantity * 100),
           0,
         ),
       },
@@ -169,6 +251,7 @@ export class AlpacaDashboardProvider implements DashboardDataProvider {
         date: dateLabel(point),
         equity: point.equity,
       })),
+      openStockPositions,
       openPositions,
       completedTrades,
       updatedAt: new Date().toISOString(),

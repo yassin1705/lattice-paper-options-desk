@@ -79,6 +79,31 @@ describe('ExecutionManager', () => {
       type: 'limit',
       timeInForce: 'day',
     });
+    expect(fake.submitOrder.mock.calls[0]?.[0].clientOrderId).toMatch(
+      /^agent-entry-t-r4-/,
+    );
+  });
+
+  it('stages a fractional stock entry without option position intent', async () => {
+    const fake = gateway();
+    const manager = new ExecutionManager(fake.gateway, false);
+    const proposal = await manager.processStockEntry({
+      symbol: 'NVDA',
+      quantity: 0.086_9,
+      limitPrice: 230.14,
+      sourceReference: 'cp-stock-test',
+      policyRevision: 4,
+    });
+
+    expect(proposal.status).toBe('ready');
+    expect(proposal.order).toMatchObject({
+      symbol: 'NVDA',
+      quantity: 0.086_9,
+      side: 'buy',
+      limitPrice: 230.14,
+    });
+    expect(proposal.order.positionIntent).toBeUndefined();
+    expect(fake.submitOrder).not.toHaveBeenCalled();
   });
 });
 
@@ -127,7 +152,10 @@ describe('AlpacaPaperExecutionGateway', () => {
       '/v2/orders:by_client_order_id?client_order_id=agent-entry-r4-test',
     );
     expect(fetcher.mock.calls[1]?.[1]?.method).toBe('POST');
-    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toMatchObject({
+    const requestBody = fetcher.mock.calls[1]?.[1]?.body;
+    expect(
+      JSON.parse(typeof requestBody === 'string' ? requestBody : ''),
+    ).toMatchObject({
       side: 'buy',
       position_intent: 'buy_to_open',
       limit_price: '2.35',
@@ -210,5 +238,50 @@ describe('AlpacaCliExecutionGateway', () => {
         clientOrderId: 'agent-entry-r4-test',
       }),
     ).rejects.toThrow('wrong paper account');
+  });
+
+  it('submits a fractional stock order without options permissions', async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        account_number: 'competition-paper',
+        status: 'ACTIVE',
+        options_trading_level: 0,
+        trading_blocked: false,
+        account_blocked: false,
+      })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({
+        id: 'cli-stock-order-1',
+        client_order_id: 'agent-entry-x-r4-stock',
+        status: 'accepted',
+        submitted_at: '2026-09-03T14:32:00.000Z',
+      });
+    const gateway = new AlpacaCliExecutionGateway({
+      apiKey: 'key',
+      secretKey: 'secret',
+      expectedAccountId: 'competition-paper',
+      commandRunner: run,
+    });
+
+    await gateway.submitOrder({
+      symbol: 'NVDA',
+      quantity: 0.086_9,
+      side: 'buy',
+      type: 'limit',
+      timeInForce: 'day',
+      limitPrice: 230.14,
+      clientOrderId: 'agent-entry-x-r4-stock',
+    });
+
+    expect(run).toHaveBeenNthCalledWith(
+      2,
+      expect.arrayContaining(['--asset-class', 'us_equity']),
+    );
+    const submit = run.mock.calls[2]?.[0] as string[];
+    expect(submit).toEqual(
+      expect.arrayContaining(['--symbol', 'NVDA', '--qty', '0.0869']),
+    );
+    expect(submit).not.toContain('--position-intent');
   });
 });

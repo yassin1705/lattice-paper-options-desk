@@ -23,6 +23,21 @@ export type OpenOptionPosition = {
   lastUpdated: string;
 };
 
+export type OpenStockPosition = {
+  id: string;
+  symbol: string;
+  name: string;
+  side: 'long' | 'short';
+  quantity: number;
+  averageEntryPrice: number;
+  currentPrice: number;
+  marketValue: number;
+  unrealizedProfitLoss: number;
+  unrealizedProfitLossPercent: number;
+  changeTodayPercent: number;
+  lastUpdated: string;
+};
+
 export type CompletedOptionTrade = {
   id: string;
   closedAt: string;
@@ -33,7 +48,14 @@ export type CompletedOptionTrade = {
   exitPrice: number | null;
   profitLoss: number | null;
   returnPercent: number | null;
-  status: 'closed' | 'expired' | 'exercised' | 'assigned' | 'cancelled' | 'unknown';
+  status:
+    | 'closed'
+    | 'expired'
+    | 'exercised'
+    | 'assigned'
+    | 'cancelled'
+    | 'unknown';
+  origin: 'technical' | 'news_llm' | 'combined' | 'manual' | 'unknown';
   report: string;
 };
 
@@ -54,6 +76,7 @@ export type DashboardSnapshot = {
   };
   account: AccountSummary;
   equityHistory: EquityPoint[];
+  openStockPositions: OpenStockPosition[];
   openPositions: OpenOptionPosition[];
   completedTrades: CompletedOptionTrade[];
   updatedAt: string;

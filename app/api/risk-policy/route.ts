@@ -1,4 +1,5 @@
 import { getRiskPolicyProvider } from '@/lib/agents/risk-manager/policy-provider';
+import { localControlRequiredResponse } from '@/lib/security/local-control';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const controlError = localControlRequiredResponse(request);
+  if (controlError) return controlError;
   try {
     const policy = await request.json();
     const snapshot = await getRiskPolicyProvider().updatePolicy(policy);

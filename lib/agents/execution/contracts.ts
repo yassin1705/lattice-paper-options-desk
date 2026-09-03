@@ -2,7 +2,7 @@ export type ExecutionOrderRequest = {
   symbol: string;
   quantity: number;
   side: 'buy' | 'sell';
-  positionIntent: 'buy_to_open' | 'sell_to_close';
+  positionIntent?: 'buy_to_open' | 'sell_to_close';
   type: 'limit';
   timeInForce: 'day';
   limitPrice: number;
@@ -26,6 +26,14 @@ export type ExecutionProposal = {
   order: ExecutionOrderRequest;
   receipt: ExecutionReceipt | null;
   error: string | null;
+};
+
+export type StockEntryRequest = {
+  symbol: string;
+  quantity: number;
+  limitPrice: number;
+  sourceReference: string;
+  policyRevision: number;
 };
 
 export type ExecutionStatus = {

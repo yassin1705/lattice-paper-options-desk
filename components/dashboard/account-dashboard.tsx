@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { AppShell } from '@/components/dashboard/app-shell';
+import { NewsStrategyPanel } from '@/components/dashboard/news-strategy-panel';
 import { RiskPolicyPanel } from '@/components/dashboard/risk-policy-panel';
 import {
   Card,
@@ -235,7 +236,10 @@ export function AccountDashboard() {
           </CardContent>
         </Card>
 
-        <RiskPolicyPanel />
+        <div className="space-y-5">
+          <RiskPolicyPanel />
+          <NewsStrategyPanel />
+        </div>
       </div>
 
       <div className="mt-5 flex items-center gap-2 rounded-xl border border-white/7 bg-white/[0.02] px-4 py-3 text-xs text-zinc-500">

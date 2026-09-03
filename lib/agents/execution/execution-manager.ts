@@ -6,11 +6,13 @@ import type {
   ExecutionOrderRequest,
   ExecutionProposal,
   ExecutionStatus,
+  StockEntryRequest,
 } from '@/lib/agents/execution/contracts';
 import type {
   ExecutionManagerPort,
   PaperOrderGateway,
 } from '@/lib/agents/execution/ports';
+import { parseOptionSymbol } from '@/lib/alpaca/option-symbol';
 
 function stableHash(value: string): string {
   let hash = 2_166_136_261;
@@ -23,11 +25,14 @@ function stableHash(value: string): string {
 
 function clientOrderId(
   source: 'entry' | 'exit',
+  strategyId: 'technical' | 'news_llm' | null,
   reference: string,
   symbol: string,
   revision: number,
 ): string {
-  return `agent-${source}-r${revision}-${stableHash(`${reference}:${symbol}`)}`;
+  const strategy =
+    strategyId === 'technical' ? 't' : strategyId === 'news_llm' ? 'n' : 'x';
+  return `agent-${source}-${strategy}-r${revision}-${stableHash(`${reference}:${symbol}`)}`;
 }
 
 export class ExecutionManager implements ExecutionManagerPort {
@@ -53,6 +58,7 @@ export class ExecutionManager implements ExecutionManagerPort {
       limitPrice: decision.plan.maximumEntryPrice,
       clientOrderId: clientOrderId(
         'entry',
+        decision.strategyId,
         decision.signalId,
         decision.plan.contractSymbol,
         decision.policyRevision,
@@ -62,6 +68,32 @@ export class ExecutionManager implements ExecutionManagerPort {
       'entry',
       decision.signalId,
       decision.policyRevision,
+      order,
+    );
+  }
+
+  async processStockEntry(
+    request: StockEntryRequest,
+  ): Promise<ExecutionProposal> {
+    const order: ExecutionOrderRequest = {
+      symbol: request.symbol,
+      quantity: request.quantity,
+      side: 'buy',
+      type: 'limit',
+      timeInForce: 'day',
+      limitPrice: request.limitPrice,
+      clientOrderId: clientOrderId(
+        'entry',
+        null,
+        request.sourceReference,
+        request.symbol,
+        request.policyRevision,
+      ),
+    };
+    return this.stage(
+      'entry',
+      request.sourceReference,
+      request.policyRevision,
       order,
     );
   }
@@ -83,6 +115,7 @@ export class ExecutionManager implements ExecutionManagerPort {
         limitPrice: decision.proposedLimitPrice ?? 0,
         clientOrderId: clientOrderId(
           'exit',
+          null,
           reference,
           decision.contractSymbol,
           decision.policyRevision,
@@ -114,8 +147,10 @@ export class ExecutionManager implements ExecutionManagerPort {
     const id = order.clientOrderId;
     const existing = this.proposals.get(id);
     if (existing) return existing;
+    const optionOrder = Boolean(parseOptionSymbol(order.symbol));
     const invalidOrder =
-      order.quantity < 1 ||
+      order.quantity <= 0 ||
+      (optionOrder && !Number.isInteger(order.quantity)) ||
       !Number.isFinite(order.limitPrice) ||
       order.limitPrice <= 0;
     const proposal: ExecutionProposal = {
@@ -128,7 +163,7 @@ export class ExecutionManager implements ExecutionManagerPort {
       order,
       receipt: null,
       error: invalidOrder
-        ? 'A positive quantity and limit price are required.'
+        ? 'A valid positive quantity and limit price are required.'
         : null,
     };
     this.proposals.set(id, proposal);
