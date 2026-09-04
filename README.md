@@ -190,10 +190,9 @@ and copilot confirmation behavior.
 ## Research harness
 
 The research notebook and command-line harness call the production TypeScript
-decision agent rather than reimplementing its rules. They evaluate future
-underlying returns and deliberately do **not** present those results as options
-P&L, because realistic options testing requires historical chains, spreads,
-fills, expiration handling, and lifecycle simulation.
+decision agent rather than reimplementing its rules. They evaluate directional
+signal quality against future underlying returns while keeping research metrics
+separate from paper-trade execution results.
 
 See [research/decision-maker/README.md](research/decision-maker/README.md) for
 usage.
@@ -234,16 +233,15 @@ skills/trading-assistant/     Copilot behavior and safety instructions
 - Rotate a credential immediately if it is ever committed, even if the commit
   is later removed.
 
-## Current limitations
+## Demo scope
 
-- This is hackathon research software, not a production trading system.
-- The technical research harness measures directional behavior, not executable
-  options returns.
-- The news and copilot paths depend on a locally available Ollama model.
-- A local process must remain online for autonomous execution and the temporary
-  public demo.
-- Profitability has not been established; abstention and risk rejection are
-  expected behavior.
+- Lattice is designed for Alpaca paper trading and research, not live brokerage
+  execution.
+- The news agent and conversational copilot use a locally hosted Qwen model
+  through Ollama.
+- The hosted showcase provides a read-only view with representative data; the
+  complete autonomous workflow runs locally so credentials, model inference,
+  execution controls, and the decision ledger remain on the user's machine.
 
 ## License
 
