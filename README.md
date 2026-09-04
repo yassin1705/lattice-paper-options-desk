@@ -1,9 +1,18 @@
 # Lattice — Explainable AI Paper Options Desk
 
-Lattice is a local-first, explainable trading workspace built for the
-[Alpaca AI Trading Agents Hackathon](https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon).
-It combines deterministic technical analysis, optional local-LLM news analysis,
-configurable risk controls, and Alpaca paper execution in one auditable workflow.
+Lattice turns advanced market analysis and Alpaca paper trading into a clear,
+natural-language experience. Built for the
+[Alpaca AI Trading Agents Hackathon](https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon),
+it helps beginners explore the market, understand their paper account, compare
+opportunities, and prepare stock or options trades without navigating a complex
+professional trading terminal.
+
+Users can ask questions such as **“How is my account doing?”**, **“Analyze
+NVDA”**, **“Find the best opportunity in my watchlist”**, or **“Invest $100 in
+NVDA stock for one day.”** Lattice translates the request into market research,
+a risk-checked proposal, and—only after explicit confirmation—a paper order.
+
+**Live demo:** [Explore the Lattice dashboard](https://lattice-paper-options-desk.indigo-ibex-9980.chatgpt.site)
 
 > [!WARNING]
 > Lattice is experimental software for paper trading and research. It is not
@@ -14,20 +23,39 @@ configurable risk controls, and Alpaca paper execution in one auditable workflow
 
 ## Why Lattice
 
-Language models can help interpret markets, but they should not have unchecked
-control over capital. Lattice separates research, decision-making, risk review,
-and execution:
+Lattice combines an approachable interface with a disciplined trading
+architecture:
 
-- Technical signals are computed deterministically from market data.
-- A local Qwen model can independently evaluate recent company news.
-- A deterministic risk manager can reject any proposed trade.
-- Every paper order has a bounded size, price, maximum loss, stop, and target.
-- The conversational copilot prepares a proposal first and requires an explicit
-  confirmation before submission.
-- Decisions and rejections are recorded in a local SQLite ledger.
+- **Natural language from research to execution** — ask for account information,
+  analyze one or more stocks, scan the configured market, or prepare a
+  fractional-stock or options paper trade through one conversation.
+- **Three Alpaca integration paths** — Alpaca Trading and Market Data APIs provide
+  account, price, options, and news data; the Alpaca MCP server gives the copilot
+  structured tools; and the official Alpaca CLI handles guarded autonomous paper
+  execution.
+- **Evidence from traceable sources** — the news pipeline gathers and
+  deduplicates coverage from Alpaca News, official company newsrooms, and Google
+  News, with optional Finnhub, Alpha Vantage, and GDELT sources.
+- **Explainable decisions** — every proposal shows the evidence, direction,
+  selected instrument, sizing, price, maximum loss, stop, target, and the risk
+  checks behind the outcome.
+- **User-controlled automation** — technical and news agents run independently
+  and can be enabled or disabled at any time, making each opportunity's origin
+  easy to identify.
+- **One non-negotiable risk authority** — deterministic rules sit between every
+  agent and execution, so a model cannot bypass the user's portfolio limits.
+- **Local-first privacy** — Qwen runs through Ollama, while brokerage credentials,
+  conversation state, and the SQLite decision ledger remain on the user's
+  machine.
 
 ## Features
 
+- **Conversational paper-trading copilot** — reads paper-account equity, cash,
+  buying power, status, and options permissions; analyzes requested tickers or
+  the configured market universe; and prepares confirmation-gated trades.
+- **Full Alpaca toolchain** — uses Alpaca APIs for live reads, Alpaca MCP for
+  conversational market and account tools, and Alpaca CLI for protected paper
+  order execution.
 - **Technical decision agent** — regime classification plus trend-following,
   mean-reversion, and breakout signals.
 - **Options contract selection** — filters contracts by expiration, delta,
@@ -36,32 +64,34 @@ and execution:
   per-trade-risk, position-count, cooldown, and market-close rules.
 - **Position supervision** — evaluates stop-loss, take-profit, holding-time,
   expiry, and account-level risk conditions.
-- **Independent news agent** — gathers and deduplicates stories from Alpaca,
-  Google News RSS, company feeds, and optional secondary sources before local
-  Qwen analysis.
-- **Trading copilot** — uses Qwen and the Alpaca MCP server for conversational
-  research and confirmation-gated paper proposals.
+- **Independent news agent** — evaluates the relevance, direction, confidence,
+  and potential impact of recent coverage with a locally running Qwen model.
+- **Multi-source news intelligence** — gathers and deduplicates stories from
+  Alpaca News, Google News RSS, official company feeds, and optional secondary
+  providers while preserving source attribution.
 - **Audit trail** — stores technical and news decisions, risk outcomes, and
   execution state locally.
-- **Read-only public demo mode** — tunnel visitors can inspect the dashboard,
-  while strategy and risk controls remain restricted to localhost.
+- **Safe public showcase** — visitors can explore a read-only hosted dashboard
+  with representative paper-trading data, while credentials and execution
+  controls remain private.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  A[Alpaca market and account data] --> T[Technical agent]
-  A --> C[Trading copilot]
-  N[News sources] --> Q[Local Qwen news agent]
+  A[Alpaca Trading and Market Data APIs] --> T[Technical agent]
+  A --> D[Dashboard and position monitor]
+  M[Alpaca MCP server] --> C[Natural-language copilot]
+  N[Alpaca News API and traceable sources] --> Q[Local Qwen news agent]
   T --> R[Deterministic risk governor]
   Q --> R
   C --> P[Confirmation-gated proposal]
   P --> R
-  R -->|approved| E[Paper execution gateway]
+  R -->|approved| E[Alpaca CLI execution gateway]
   R -->|rejected| L[SQLite decision ledger]
   E --> X[Alpaca paper account]
   E --> L
-  X --> D[Dashboard and position monitor]
+  X --> D
   L --> D
 ```
 
